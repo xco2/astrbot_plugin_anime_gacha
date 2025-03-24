@@ -1,9 +1,9 @@
-# helloworld
+# anime gacha
 
-AstrBot 插件模板
+抽番、查番插件
 
-A template plugin for AstrBot plugin feature
+# 指令
 
-# 支持
+- /抽番 随机推荐一些老番
 
-[帮助文档](https://astrbot.app)
+[帮助文档](https://github.com/xco2/astrbot_plugin_anime_gacha)

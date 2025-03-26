@@ -105,7 +105,7 @@ class AnimeGacha(Star):
         temp = """{index}.《{anime_name}》- {state}\n"""
         result_str = ""
         for i, (anime_name, value) in enumerate(today_data.items()):
-            result_str += temp.format(index=i, anime_name=anime_name, state="|".join(value['state'])).replace("~", r"\~")
+            result_str += temp.format(index=i+1, anime_name=anime_name, state="|".join(value['state'])).replace("~", r"\~")
         yield event.plain_result(result_str)
 
     @filter.command("新番")

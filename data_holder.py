@@ -41,7 +41,7 @@ class DataHolder:
     # 获取每天更新的番剧数据
     async def get_daily_anime_datas(self, schedule_time: str) -> dict:
         if schedule_time not in self.anime_datas:
-            self.anime_datas[schedule_time] = download_new_anime_datas(schedule_time)
+            self.anime_datas[schedule_time] = await download_new_anime_datas(schedule_time)
             self.save_anime_datas()
 
         return self.anime_datas[schedule_time]['daily_anime']
@@ -56,3 +56,32 @@ class DataHolder:
             self.save_today_recommend_anime()
 
         return self.today_recommend_anime['today_recommend_animes']
+
+    async def get_today_update_animes(self) -> dict:
+        # 获取现在时间
+        now_time = datetime.datetime.now()
+        year = now_time.strftime('%Y')
+        mount = int(now_time.strftime('%m'))
+        if mount < 4:
+            quarter_time = year + '01'
+        elif mount < 7:
+            quarter_time = year + '04'
+        elif mount < 10:
+            quarter_time = year + '07'
+        else:
+            quarter_time = year + '10'
+        print(quarter_time)
+        # 获取现在周几
+        weekday_str = ["周一 (月)", "周二 (火)", "周三 (水)", "周四 (木)", "周五 (金)", "周六 (土)", "周日 (日)"]
+        weekday = weekday_str[datetime.datetime.now().weekday()]
+        datas = await self.get_daily_anime_datas(quarter_time)
+        datas = datas[weekday]
+        return datas
+
+
+if __name__ == '__main__':
+    import asyncio
+
+    data_holder = DataHolder()
+    data = asyncio.run(data_holder.get_today_update_animes())
+    print(data)

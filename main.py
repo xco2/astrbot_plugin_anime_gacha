@@ -40,21 +40,23 @@ class AnimeGacha(Star):
          <style>
             .container {
                 display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-                gap: 20px;
-                padding: 20px;
+                /* 改为auto-fit自动填充可用空间，缩小最小列宽 */
+                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                /* 缩小间距和边距 */
+                gap: 15px;
+                padding: 15px;
                 max-width: 1200px;
                 margin: 0 auto;
             }
-    
+        
             .item {
                 position: relative;
-                border-radius: 8px;
+                border-radius: 6px;  /* 减小圆角 */
                 overflow: hidden;
-                box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-                transition: transform 0.3s ease;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);  /* 减小阴影 */
+                transition: transform 0.2s ease;  /* 加快过渡速度 */
             }
-    
+        
             .item img {
                 width: 100%;
                 height: 100%;
@@ -62,19 +64,20 @@ class AnimeGacha(Star):
                 aspect-ratio: 2/3;
                 display: block;
             }
-    
+        
             .item figcaption {
                 position: absolute;
                 bottom: 0;
                 left: 0;
                 right: 0;
-                background: linear-gradient(transparent, rgba(0,0,0,0.7));
                 color: white;
-                padding: 15px;
-                font-size: 20px;
+                /* 减小内边距和字号 */
+                padding: 10px;
+                font-size: 18px;
                 text-align: center;
                 font-weight: bold;
-                text-shadow: 2px 0 black, -2px 0 black, 0 2px black, 0 -2px black;
+                /* 简化文字阴影 */
+                text-shadow: 0 2px 4px rgba(0,0,0,0.5);
             }
         </style>
         <div class="container">
@@ -93,17 +96,17 @@ class AnimeGacha(Star):
         url = await self.html_render(TMPL, {"boxs": random.choices(boxs, k=10)})
         yield event.image_result(url)
 
-    @filter.command("今日番剧")
+    @filter.command("今日新番")
     async def today_update_anime(self, event: AstrMessageEvent):
         """
         获取今日更新番剧
         """
-        user_name = event.get_sender_name()
-        message_str = event.message_str  # 用户发的纯文本消息字符串
-        message_chain = event.get_messages()  # 用户所发的消息的消息链 # from astrbot.api.message_components import *
-        logger.info(message_chain)
-        logger.info(event.message_obj)
-        yield event.plain_result(f"Hello, {user_name}, 你发了 {message_str}!")  # 发送一条纯文本消息
+        today_data = await self.data_holder.get_today_update_animes()
+        temp = """{index}.《{anime_name}》- {state}\n"""
+        result_str = ""
+        for i, (anime_name, value) in enumerate(today_data.items()):
+            result_str += temp.format(index=i, anime_name=anime_name, state="|".join(value['state'])).replace("~", r"\~")
+        yield event.plain_result(result_str)
 
     @filter.command("新番")
     async def find_anime(self, event: AstrMessageEvent):

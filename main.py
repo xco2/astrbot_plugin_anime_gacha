@@ -33,9 +33,8 @@ class AnimeGacha(Star):
     @filter.command("抽番")
     async def today_recommend_anime(self, event: AstrMessageEvent):
         """
-        获取今日推荐番剧
+        随机发现一系列番剧
         """
-
         recommend_data = await self.data_holder.get_today_recommend_animes()
         TMPL = """
          <style>

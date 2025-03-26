@@ -57,6 +57,7 @@ class DataHolder:
 
         return self.today_recommend_anime['today_recommend_animes']
 
+    # 获取今天更新的番剧
     async def get_today_update_animes(self) -> dict:
         # 获取现在时间
         now_time = datetime.datetime.now()

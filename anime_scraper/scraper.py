@@ -1,8 +1,6 @@
 import requests
 from bs4 import BeautifulSoup, Tag
 import re
-import os
-from astrbot.api import logger
 
 
 def anime_html_table_to_json(table: BeautifulSoup) -> dict:
@@ -90,23 +88,30 @@ async def download_new_anime_datas(schedule_time: str) -> dict:
         soup = BeautifulSoup(response.text, "html.parser")
         div = soup.find("div", {"class": "post-body"})
         blocks = str(div).split("<hr/>")
-        daily_anime = BeautifulSoup(blocks[-2], "html.parser")  # 每天更新的番剧
-        details = BeautifulSoup(blocks[-1], "html.parser")  # 番剧的详细信息
+        if len(blocks) >= 2:
+            daily_anime = BeautifulSoup(blocks[-2], "html.parser")  # 每天更新的番剧
+            details = BeautifulSoup(blocks[-1], "html.parser")  # 番剧的详细信息
+        else:
+            daily_anime = None
+            details = BeautifulSoup(blocks[0], "html.parser")
 
         anime_datas["daily_anime"] = {}
-        daily_animes = [item for item in daily_anime if isinstance(item, Tag)]
-        if len(daily_animes) == 1:
-            daily_animes = [item for item in daily_animes[0] if isinstance(item, Tag) and item.name == "div"]
-        daily_animes = [[daily_animes[i], daily_animes[i + 1]] for i in range(0, len(daily_animes), 3)]
-        for da in daily_animes:
-            title = da[0].text.strip()  # 星期几
-            anime_datas["daily_anime"][title] = {}
-            for anime in [item for item in da[1] if isinstance(item, Tag)]:
-                anime_name = anime.find("td").text.strip()  # 番剧名
-                anime_state = [p.text for p in anime.find_all("p") if p.get("class") != ["area"]]  # 番剧状态 播出时间和总集数
-                anime_image_url = anime.find("a").get("href") if anime.find("a") else ""  # 番剧封面图片链接
-                anime_datas["daily_anime"][title].update(
-                    {anime_name: {"state": anime_state, "image_url": anime_image_url}})
+        if daily_anime is not None:
+            daily_animes = [item for item in daily_anime if isinstance(item, Tag)]
+            if len(daily_animes) == 1:
+                daily_animes = [item for item in daily_animes[0] if isinstance(item, Tag) and item.name == "div"]
+            daily_animes = [[daily_animes[i], daily_animes[i + 1]] for i in range(0, len(daily_animes), 3)]
+            for da in daily_animes:
+                title = da[0].text.strip()  # 星期几
+                anime_datas["daily_anime"][title] = {}
+                for anime in [item for item in da[1] if isinstance(item, Tag)]:
+                    anime_name = anime.find("td").text.strip()  # 番剧名
+                    anime_state = [p.text for p in anime.find_all("p") if p.get("class") != ["area"]]  # 番剧状态 播出时间和总集数
+                    anime_image_url = anime.find("a").get("href") if anime.find("a") else ""  # 番剧封面图片链接
+                    anime_datas["daily_anime"][title].update(
+                        {anime_name: {"state": anime_state, "image_url": anime_image_url}})
+
+        # -------------------------------------------------------------------------
 
         anime_details = details.find_all("table")
 
@@ -115,10 +120,10 @@ async def download_new_anime_datas(schedule_time: str) -> dict:
             d = anime_html_table_to_json(ad)
             anime_datas["anime_details"].update({d["title_cn"]: d})
 
-        return anime_datas
     else:
-        logger.error(f"获取番剧信息失败, 无法访问:{url}")
-        return anime_datas
+        raise ValueError(f"获取番剧信息失败, 无法访问:{url}")
+
+    return anime_datas
 
 
 async def get_today_recommend() -> dict:
@@ -140,7 +145,7 @@ async def get_today_recommend() -> dict:
                 result.update({anime_name: {"image_url": img_url, "url": anime_url}})
             total_result.update(result)
         else:
-            logger.error(f"获取今日推荐番剧失败, 无法访问:{url}")
+            raise ValueError(f"获取今日推荐番剧失败, 无法访问:{url}")
 
     return total_result
 
@@ -149,9 +154,9 @@ if __name__ == '__main__':
     import asyncio
 
     # data1 = asyncio.run(download_new_anime_datas("202501"))
-    # data2 = asyncio.run(download_new_anime_datas("202301"))
+    data2 = asyncio.run(download_new_anime_datas("202504"))
     # print(data1)
     # print("-" * 60)
     # print(data2)
-    data = asyncio.run(get_today_recommend())
-    print(data)
+    # data = asyncio.run(get_today_recommend())
+    print(data2)

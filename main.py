@@ -35,7 +35,12 @@ class AnimeGacha(Star):
         """
         随机发现一系列番剧
         """
-        recommend_data = await self.data_holder.get_today_recommend_animes()
+        try:
+            recommend_data = await self.data_holder.get_today_recommend_animes()
+        except Exception as e:
+            logger.error(e)
+            yield event.plain_result("获取今日番剧数据失败")
+            return
         TMPL = """
          <style>
             .container {
@@ -111,7 +116,13 @@ class AnimeGacha(Star):
         """
         获取今日更新番剧
         """
-        today_data = await self.data_holder.get_today_update_animes()
+        try:
+            today_data = await self.data_holder.get_today_update_animes()
+        except Exception as e:
+            logger.error(e)
+            yield event.plain_result("获取今日更新番剧数据失败")
+            return
+
         temp = """{index}.《{anime_name}》- {state}\n"""
         result_str = ""
         for i, (anime_name, value) in enumerate(today_data.items()):

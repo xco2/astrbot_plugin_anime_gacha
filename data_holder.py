@@ -3,7 +3,7 @@ import json
 import datetime
 
 from .anime_scraper.scraper import download_new_anime_datas, get_today_recommend
-
+from astrbot.api import logger
 
 class DataHolder:
     def __init__(self):
@@ -71,7 +71,6 @@ class DataHolder:
             quarter_time = year + '07'
         else:
             quarter_time = year + '10'
-        print(quarter_time)
         # 获取现在周几
         weekday_str = ["周一 (月)", "周二 (火)", "周三 (水)", "周四 (木)", "周五 (金)", "周六 (土)", "周日 (日)"]
         weekday = weekday_str[datetime.datetime.now().weekday()]

@@ -2,7 +2,7 @@ import os
 import json
 import datetime
 
-from anime_scraper.scraper import download_new_anime_datas, get_today_recommend
+from .anime_scraper.scraper import download_new_anime_datas, get_today_recommend
 
 
 class DataHolder:

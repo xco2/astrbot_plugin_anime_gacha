@@ -1,6 +1,6 @@
 name: anime_gacha # 这是你的插件的唯一识别名。
 desc: 每天获取随机番剧，查看今日更新的新番 # 插件简短描述
 help: /抽番 在番剧列表中抽取一部番剧；/今日新番 查看今日更新的番剧 # 插件的帮助信息
-version: v0.5.0 # 插件版本号。格式：v1.1.1 或者 v1.1
+version: v1.0.0 # 插件版本号。格式：v1.1.1 或者 v1.1
 author: xco2 # 作者
 repo: https://github.com/xco2/astrbot_plugin_anime_gacha # 插件的仓库地址

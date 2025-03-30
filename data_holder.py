@@ -83,14 +83,14 @@ class DataHolder:
                 with open(self.anime_datas_path, "r", encoding='utf-8') as f:
                     self.anime_datas = json.load(f)
             except Exception as e:
-                self.anime_datas = {}
+                self.anime_datas = {"version": self.data_version}
             # 检查数据版本是否一致
             if self.anime_datas.get("version", None) != self.data_version:
-                self.anime_datas = {}
+                self.anime_datas = {"version": self.data_version}
             log(self.logger,
                 self.log_head + f"读取本地缓存的番剧数据，共{len(self.anime_datas) - 1}个季度数据")  # 有一行是版本信息
         else:
-            self.anime_datas = {}
+            self.anime_datas = {"version": self.data_version}
 
         # 今日推荐番剧数据
         self.today_recommend_anime_path = os.path.join(os.path.dirname(__file__), "anime_datas",
@@ -112,12 +112,23 @@ class DataHolder:
             self.anime_graph = Graph()
             self.anime_graph.parse(self.anime_graph_path, format='turtle')
 
-            with open(self.all_anime_names_save_path, "r", encoding='utf-8') as f:
-                self.all_anime_names = eval(f.read())
-            log(self.logger, self.log_head + f"本地缓存图数据，共{len(self.anime_graph)}条数据")
+            reload_data = False
+            # 查询数据版本号
+            for vision in self.anime_graph.objects(subject=self.anime_ns["version"], predicate=self.anime_ns["v"]):
+                if vision != self.data_version:
+                    reload_data = True
+            if not reload_data:  # 版本正确
+                with open(self.all_anime_names_save_path, "r", encoding='utf-8') as f:
+                    self.all_anime_names = eval(f.read())
+                log(self.logger, self.log_head + f"本地缓存图数据，共{len(self.anime_graph)}条数据")
+            else:  # 版本落后
+                self.all_anime_names = set()
+                self.anime_graph = self.create_anime_graph()
+                log(self.logger, self.log_head + f"从数据构建图，共{len(self.anime_graph)}条数据")
         else:
             self.all_anime_names = set()
             self.anime_graph = self.create_anime_graph()
+            log(self.logger, self.log_head + f"从数据构建图，共{len(self.anime_graph)}条数据")
 
     # 保存番剧数据
     def save_anime_datas(self) -> None:
@@ -404,7 +415,6 @@ class DataHolder:
 
         # 构建图
         for schedule_time, data in self.anime_datas.items():
-            print("schedule_time", schedule_time)
             if schedule_time == "version":
                 continue
             # 添加一个季度的数据到图中
@@ -463,9 +473,9 @@ if __name__ == '__main__':
     # time.sleep(3)
     # asyncio.run(data_holder.update_anime_datas('202504'))
 
-    # data = asyncio.run(data_holder.get_anime_detail("mujica"))
-    # print(data)
-    # print(len(data))
+    data = asyncio.run(data_holder.get_anime_detail("mujica"))
+    print(data)
+    print(len(data))
 
     # 获取所有数据
     # for y in ["2025", "2024", "2023", "2022", "2021", "2020", "2019"]:

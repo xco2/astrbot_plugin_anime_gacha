@@ -28,28 +28,60 @@ def anime_html_table_to_json(table: BeautifulSoup) -> dict:
     # 提取类型和标签（定位第一个<tr>的第三个<td>）
     rows = table.find_all('tr')
     if len(rows) >= 2:
-        type_td = rows[0].find_all('td')
-        if len(type_td) >= 3:
-            result["type"] = type_td[2].get_text(strip=True)
+        for td in rows[0].find_all('td'):
+            is_type_td = False
+            for c in td.attrs.get("class", []):
+                if c.startswith("type"):
+                    is_type_td = True
+                    break
+            if is_type_td:
+                result["type"] = td.get_text(strip=True)
 
-        tag_td = rows[1].find_all('td')
-        if tag_td:
-            result["tags"] = tag_td[0].get_text(strip=True).split('/')
+        result["tags"] = []
+        tag_td = rows[1].find_all('td')[0]
+        for c in tag_td.attrs.get("class", []):
+            if c.startswith("type_tag"):
+                result["tags"] = tag_td.get_text(strip=True).split('/')
 
     # 提取制作人员（匹配中文职位名称）
     staff_pattern = re.compile(r'([\u4e00-\u9fa5]+)\s*：\s*(.+)$')
     staff_data = {}
     for td in table.select('td[rowspan="2"]'):
+        is_staff_block = False
+        for c in td.attrs.get('class', []):
+            if c.startswith("staff"):
+                is_staff_block = True
+                break
+        if not is_staff_block:
+            continue
         lines = [line.strip() for line in td.stripped_strings]
+        last_key = None
         for line in lines:
-            match = staff_pattern.match(line)
-            if match:
-                key = match.group(1)
-                value = match.group(2)
-                if key in staff_data:  # 处理多人同职位
-                    staff_data[key] += f"、{value}"
-                else:
-                    staff_data[key] = value
+            if "/" in line and "：" in line:
+                sublines = [l.strip() for l in line.split("/")]
+            else:
+                sublines = [line]
+            for line in sublines:
+                line = line.replace("\n", "").replace("\t", "").replace("&amp", "").replace("\u3000", "")
+                match = staff_pattern.match(line)
+                if match is not None:
+                    key = match.group(1)
+                    key = re.sub(r'\s', '', key)
+                    last_key = key
+                    value = match.group(2)
+                    if key in staff_data:  # 处理多人同职位
+                        staff_data[key] += f"、{value}"
+                    else:
+                        staff_data[key] = value
+                else:  # 一个职位多个人的情况
+                    if last_key is not None:
+                        if "(" in line or ")" in line:
+                            # 例如下的情况
+                            # 原作：篠原健太
+                            # (少年Jump/集英社)
+                            staff_data[last_key] += line
+                        else:
+                            staff_data[last_key] += f"、{line}"
     result["staff"] = staff_data
 
     # 提取声优阵容（定位与制作人员同行的<td>）
@@ -169,11 +201,9 @@ async def get_today_recommend() -> dict:
 if __name__ == '__main__':
     import asyncio
 
-    # data1 = asyncio.run(download_new_anime_datas("202501"))
-    data2 = asyncio.run(download_new_anime_datas("202210"))
-    # print(data1)
-    # print("-" * 60)
-    print(data2)
-    print(len(data2["anime_details"]))
+    # data = asyncio.run(download_new_anime_datas("202501"))
+    # data = asyncio.run(download_new_anime_datas("202110"))
+    # print(data)
+    # print(len(data2["anime_details"]))
     # data = asyncio.run(get_today_recommend())
     # print(data2)

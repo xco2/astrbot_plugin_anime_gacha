@@ -20,10 +20,10 @@ class AnimeGacha(Star):
 
         self.last_update_anime_data_time = 0
 
-        self.message_tail = ("\n" + "=" * 15 + "\n数据来源:長門有C[http://yuc.wiki/]\n" + "=" * 15)
+        self.message_tail = ("\n" + "=" * 15 + "\n数据来源:長門有C[yuc点wiki]\n" + "=" * 15)
 
-    # @filter.command("今日番剧")
-    # async def find_anime(self, event: AstrMessageEvent):
+    # @filter.command("demo")
+    # async def demo(self, event: AstrMessageEvent):
     #     """
     #     抽取一部番剧
     #     """
@@ -230,9 +230,7 @@ class AnimeGacha(Star):
                 f"cv: {'、'.join(anime_data['cv']) if len(anime_data['cv']) > 0 else '-'}\n"
                 f"tags: {'、'.join(anime_data['tags'] if len(anime_data['tags']) > 0 else '-')}\n"
                 f"staff: \n"
-                f"{staff_str}"
-                f"PV: {anime_data.get('PV', '-')}\n"
-                f"官方网站: {anime_data.get('官方网站', '-')}\n")
+                f"{staff_str}")
 
         if len(anime_datas) > 1:
             temp += "=" * 15 + "\n"

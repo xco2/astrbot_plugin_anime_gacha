@@ -4,6 +4,7 @@ from urllib.parse import quote, unquote
 from difflib import SequenceMatcher
 from datetime import datetime, timezone, timedelta
 import re
+import time
 
 try:
     from anime_scraper.scraper import download_new_anime_datas, get_today_recommend
@@ -42,11 +43,35 @@ def log(logger, content: str):
         print(content)
 
 
+# 限制一个函数调用的频率
+def throttle(seconds, logger):
+    def decorator(func):
+        last_call_time = 0
+
+        def wrapper(*args, **kwargs):
+            nonlocal last_call_time
+            current_time = time.time()
+            elapsed_time = current_time - last_call_time
+            if elapsed_time < seconds:
+                wait_time = seconds - elapsed_time
+                log(logger, f"爬取信息太快啦，等待：{wait_time:.2f}秒...")
+                time.sleep(wait_time)
+            result = func(*args, **kwargs)
+            last_call_time = time.time()
+            return result
+
+        return wrapper
+
+    return decorator
+
+
 class DataHolder:
     def __init__(self, logger=None):
         self.data_version = "v1.0.0"
         self.logger = logger
         self.log_head = "[Anime_Gacha_DataHolder] - "
+        # 限制这个爬虫5秒只能用一次,否则等待
+        self.download_new_anime_datas = throttle(6, self.logger)(download_new_anime_datas)
 
         if not os.path.exists(os.path.join(os.path.dirname(__file__), "anime_datas")):
             os.mkdir(os.path.join(os.path.dirname(__file__), "anime_datas"))
@@ -170,7 +195,7 @@ class DataHolder:
         if schedule_time is None:
             schedule_time = self.get_now_schedule_time()
         # 联网获取数据
-        self.anime_datas[schedule_time] = await download_new_anime_datas(schedule_time)
+        self.anime_datas[schedule_time] = await self.download_new_anime_datas(schedule_time)
         self.save_anime_datas()
 
         # 统计所有番剧名称
@@ -428,13 +453,8 @@ class DataHolder:
 
 if __name__ == '__main__':
     import asyncio
-    import time
 
     data_holder = DataHolder()
-
-    data = asyncio.run(data_holder.get_anime_detail("BanG Dream!"))
-    print(data)
-    print(len(data))
 
     # 更新数据
     # asyncio.run(data_holder.update_anime_datas('202410'))
@@ -442,6 +462,10 @@ if __name__ == '__main__':
     # asyncio.run(data_holder.update_anime_datas('202501'))
     # time.sleep(3)
     # asyncio.run(data_holder.update_anime_datas('202504'))
+
+    # data = asyncio.run(data_holder.get_anime_detail("mujica"))
+    # print(data)
+    # print(len(data))
 
     # 获取所有数据
     # for y in ["2025", "2024", "2023", "2022", "2021", "2020", "2019"]:
@@ -455,5 +479,4 @@ if __name__ == '__main__':
     #         print(y + m)
     #         data = asyncio.run(data_holder.update_anime_datas(y + m))
     #         # print("data", len(data))
-    #         time.sleep(3)
     #         print("=" * 60)

@@ -7,6 +7,7 @@ import time
 
 from .data_holder import DataHolder, utc8_2_utc9
 
+
 @register("anime-gacha",
           "xco2",
           "抽番",
@@ -152,7 +153,7 @@ class AnimeGacha(Star):
         yield event.plain_result(result_str)
 
     @filter.command("更新番剧数据")
-    async def update_anime_data(self, event: AstrMessageEvent, schedule_time: int = None):
+    async def update_anime_data(self, event: AstrMessageEvent, schedule_time: int):
         """
         更新番剧数据
         args:

@@ -44,7 +44,8 @@ def anime_html_table_to_json(table: BeautifulSoup) -> dict:
                 result["tags"] = tag_td.get_text(strip=True).split('/')
 
     # 提取制作人员（匹配中文职位名称）
-    staff_pattern = re.compile(r'([\u4e00-\u9fa5]+)\s*：\s*(.+)$')
+    staff_pattern = re.compile(  # 匹配中英日职位名称
+        r'([a-zA-Z\u4e00-\u9fa5\u3040-\u309F\u30A0-\u30FF\uff21-\uff3a\uff41-\uff5a]+)\s*：\s*(.+)$')
     staff_data = {}
     for td in table.select('td[rowspan="2"]'):
         is_staff_block = False

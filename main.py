@@ -135,7 +135,7 @@ class AnimeGacha(Star):
 
         temp = """{index}.《{anime_name}》\n{state}\n"""
         result_str = f"==={today_data.pop('现在时间')}===\n"
-        for line_index, (anime_name, value) in enumerate(today_data.items()):
+        for line_index, (anime_name, value) in enumerate(today_data.get("当前季度", {}).items()):
             state = value['state']
             for i in range(len(state)):
                 if ':' in state[i]:
@@ -149,6 +149,24 @@ class AnimeGacha(Star):
             result_str += temp.format(index=line_index + 1, anime_name=anime_name,
                                       state="\n - ".join(value['state'])).replace("~", r"\~")
             result_str += "-" * 15 + "\n"
+
+        if len(today_data.get("下一季度", {})) > 0:
+            result_str += "===下一季度===\n"
+            for line_index, (anime_name, value) in enumerate(today_data.get("下一季度", {}).items()):
+                state = value['state']
+                for i in range(len(state)):
+                    if ':' in state[i]:
+                        state[i] = state[i].replace("~", "")
+                        # 获得这个时间的
+                        utc9_time = utc8_2_utc9(state[i])
+                        state[i] = "更新时间:" + state[i] + "(UTC+8); " + utc9_time + "(UTC+9)"
+                    elif '/' in state[i]:
+                        state[i] = "更新日期:" + state[i]
+
+                result_str += temp.format(index=line_index + 1, anime_name=anime_name,
+                                          state="\n - ".join(value['state'])).replace("~", r"\~")
+                result_str += "-" * 15 + "\n"
+
         result_str += self.message_tail
         yield event.plain_result(result_str)
 

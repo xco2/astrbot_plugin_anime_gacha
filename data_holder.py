@@ -2,7 +2,7 @@ import os
 import json
 from urllib.parse import quote, unquote
 from difflib import SequenceMatcher
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 import re
 import time
 
@@ -18,6 +18,9 @@ def utc8_2_utc9(time_str: str):
     utc9 = timezone(timedelta(hours=9))
 
     # 解析时间字符串为 datetime 对象，并设置为 UTC+8 时区
+    h, m = time_str.split(":")
+    if int(h) >= 24:
+        time_str = str(int(h) % 24) + ":" + m
     dt_utc8 = datetime.strptime(time_str, '%H:%M').replace(tzinfo=utc8)
 
     # 转换到 UTC+9 时区
@@ -143,7 +146,7 @@ class DataHolder:
 
     # -------------------------------------------------------------
 
-    # 获取当前季度
+    # 获取当前季度的时间名称
     @staticmethod
     def get_now_schedule_time() -> str:
         # 获取现在时间
@@ -158,6 +161,40 @@ class DataHolder:
             quarter_time = year + '07'
         else:
             quarter_time = year + '10'
+        return quarter_time
+
+    # 计算到下一季度还有多少天
+    @staticmethod
+    def days_to_next_quarter() -> int:
+        current_date = date.today()
+        quarter_starts = [
+            date(current_date.year, 1, 1),
+            date(current_date.year, 4, 1),
+            date(current_date.year, 7, 1),
+            date(current_date.year, 10, 1)
+        ]
+        for start_date in quarter_starts:
+            if start_date > current_date:
+                return (start_date - current_date).days
+        next_quarter_start = datetime.date(current_date.year + 1, 1, 1)
+        return (next_quarter_start - current_date).days
+
+    # 获取下一个季度的时间名称
+    @staticmethod
+    def get_next_schedule_time() -> str:
+        # 获取现在时间
+        now_time = date.today()
+        year = now_time.year
+        month = now_time.month
+
+        if month < 4:
+            quarter_time = str(year) + '04'
+        elif month < 7:
+            quarter_time = str(year) + '07'
+        elif month < 10:
+            quarter_time = str(year) + '10'
+        else:
+            quarter_time = str(year + 1) + '01'
         return quarter_time
 
     # 获取每天更新的番剧数据
@@ -192,14 +229,27 @@ class DataHolder:
 
     # 获取今天更新的番剧
     async def get_today_update_animes(self, update_now: bool = False) -> dict:
-        quarter_time = self.get_now_schedule_time()
         # 获取现在周几
         weekday_str = ["周一 (月)", "周二 (火)", "周三 (水)", "周四 (木)", "周五 (金)", "周六 (土)", "周日 (日)"]
         weekday = weekday_str[datetime.now().weekday()]
+
+        # 获取当前季度的更新
+        quarter_time = self.get_now_schedule_time()
         datas = await self.get_daily_anime_datas(quarter_time, update_now)
         datas = datas.get(weekday, {"没有记录": []})
-        datas.update({"现在时间": f"{quarter_time} {weekday}"})
-        return datas
+
+        if self.days_to_next_quarter() < 7:
+            next_quarter_time = self.get_next_schedule_time()
+            next_datas = await self.get_daily_anime_datas(next_quarter_time, update_now)
+            next_datas = next_datas.get(weekday, {})
+        else:
+            next_datas = {}
+
+        result_data = {"现在时间": f"{quarter_time} {weekday}",
+                       "当前季度": datas,
+                       "下一季度": next_datas}
+
+        return result_data
 
     # 更新番剧数据
     async def update_anime_datas(self, schedule_time: str = None) -> None:
@@ -473,9 +523,13 @@ if __name__ == '__main__':
     # time.sleep(3)
     # asyncio.run(data_holder.update_anime_datas('202504'))
 
-    data = asyncio.run(data_holder.get_anime_detail("mujica"))
+    data = asyncio.run(data_holder.get_today_update_animes())
     print(data)
     print(len(data))
+
+    # data = asyncio.run(data_holder.get_anime_detail("mujica"))
+    # print(data)
+    # print(len(data))
 
     # 获取所有数据
     # for y in ["2025", "2024", "2023", "2022", "2021", "2020", "2019"]:

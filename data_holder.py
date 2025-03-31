@@ -5,6 +5,7 @@ from difflib import SequenceMatcher
 from datetime import datetime, timezone, timedelta, date
 import re
 import time
+import copy
 
 try:
     from anime_scraper.scraper import download_new_anime_datas, get_today_recommend
@@ -209,7 +210,7 @@ class DataHolder:
             log(self.logger, self.log_head + f"获取{schedule_time}季度的番剧数据")
             await self.update_anime_datas(schedule_time)
 
-        return self.anime_datas[schedule_time].get('daily_anime', {})
+        return copy.deepcopy(self.anime_datas[schedule_time].get('daily_anime', {}))
 
     # -------------------------------------------------------------
 
@@ -369,7 +370,7 @@ class DataHolder:
                                        data: dict,
                                        anime_ns: Namespace) -> None:
         daily_data = data.get('daily_anime', {})
-        data = data.get("anime_details")
+        data = copy.deepcopy(data.get("anime_details"))
         if data is None:
             return
         # ------------------------番剧详细信息--------------------------

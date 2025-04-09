@@ -299,23 +299,17 @@ class AnimeGacha(Star):
             query(string): 要查找的人名或作品名的关键词，如：ave mujica、丰川祥子、海猫络合物。
         """
         # 获取当前对话 ID
-        # curr_cid = await self.context.conversation_manager.get_curr_conversation_id(event.unified_msg_origin)
-        # context = []
-        #
-        # if curr_cid:
-        #     # 如果当前对话 ID 存在，获取对话对象
-        #     conversation = await self.context.conversation_manager.get_conversation(event.unified_msg_origin, curr_cid)
-        #     if conversation and conversation.history:
-        #         context = json.loads(conversation.history)
-        # else:
-        #     # 如果当前对话 ID 不存在，创建一个新的对话
-        #     curr_cid = await self.context.conversation_manager.new_conversation(event.unified_msg_origin)
-        #     conversation = await self.context.conversation_manager.get_conversation(event.unified_msg_origin, curr_cid)
-        #
-        personality_name = self.context.provider_manager.selected_default_persona.get("name", "default")
-        system_prompt = self.context.provider_manager.selected_default_persona.get("prompt", "")
-        # FIXME: 这里的system_prompt不对
-        # FIXME: 回复时不是这个返回的东西
+        curr_cid = await self.context.conversation_manager.get_curr_conversation_id(event.unified_msg_origin)
+        personality_name = "default"
+        system_prompt = ""
+        if curr_cid:
+            # 如果当前对话 ID 存在，获取对话对象
+            conversation = await self.context.conversation_manager.get_conversation(event.unified_msg_origin, curr_cid)
+            personality_name = conversation.persona_id
+
+            for persona in self.context.provider_manager.personas:
+                if persona.get('name') == personality_name:
+                    system_prompt = persona.get("prompt", "")
 
         # ---------------------------------------------------
         # 到萌娘百科搜索
@@ -369,7 +363,7 @@ class AnimeGacha(Star):
             yield event.plain_result("在萌娘百科上没有找到相关信息。")
             return
         elif len(llm_results) == 1:
-            if personality_name != "default":  # 如果用户有自定义人设
+            if personality_name != "default" and personality_name != "":  # 如果用户有自定义人设
                 # 把回答修改为符合人设的
                 prompt = (f"基于角色以合适的语气、称呼等，修改下面给出的回答，生成符合人设的回答。\n"
                           f"需要修改的回答：'{llm_results[0]}'")

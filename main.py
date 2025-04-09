@@ -1,11 +1,14 @@
 from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
-from astrbot.api import logger
+from astrbot.api import logger, llm_tool
 import astrbot.api.message_components as Comp
 import random
 import time
+import json
 
 from .data_holder import DataHolder, utc8_2_utc9
+from .anime_scraper.moegirl_scraper import search_moegirl
+from .split_long_text import split_text
 
 
 @register("anime-gacha",
@@ -21,7 +24,7 @@ class AnimeGacha(Star):
 
         self.last_update_anime_data_time = 0
 
-        self.message_tail = ("\n" + "=" * 15 + "\n数据来源:長門有C[yuc点wiki]\n" + "=" * 15)
+        self.message_tail_yuc = ("\n" + "=" * 15 + "\n数据来源:長門有C[yuc点wiki]\n" + "=" * 15)
 
     # @filter.command("demo")
     # async def demo(self, event: AstrMessageEvent):
@@ -167,7 +170,7 @@ class AnimeGacha(Star):
                                           state="\n - ".join(value['state'])).replace("~", r"\~")
                 result_str += "-" * 15 + "\n"
 
-        result_str += self.message_tail
+        result_str += self.message_tail_yuc
         yield event.plain_result(result_str)
 
     @filter.command("更新番剧数据")
@@ -257,9 +260,156 @@ class AnimeGacha(Star):
             for anime_data in anime_datas[1:]:
                 temp += f"{anime_data['anime_name']}\n"
 
-        temp += self.message_tail
+        temp += self.message_tail_yuc
 
         yield event.plain_result(temp)
+
+    # =========================================================================
+    # 根据wiki的标题进行过滤
+    async def filter_wikis_by_title(self, wikis: dict, question: str) -> dict:
+        titles = list(wikis.keys())
+        titles_str = ""
+        for i, t in enumerate(titles):
+            titles_str += f"{i + 1}：{t}\n"
+        prompt = f"以下文章标题中，哪些与用户提问：'{question}'有关，请输出它的序号，如果有多个，请用、分割：\n{titles_str}"
+
+        # 调用 LLM 判断哪一片文章符合提问
+        llm_response = await self.context.get_using_provider().text_chat(
+            prompt=prompt,
+            contexts=[],
+            image_urls=[],
+            system_prompt="",
+        )
+        selected_titles = llm_response.completion_text.split("、")
+        new_result = {}
+        for t in selected_titles:
+            try:
+                t = int(t) - 1
+                if titles[t] in wikis:
+                    new_result[titles[t]] = wikis[titles[t]]
+            except:
+                continue
+        return new_result
+
+    @llm_tool(name="search_moegirl")
+    async def search_moegirl(self, event: AstrMessageEvent, query: str):
+        """当需要查询萌娘百科上的动画、游戏、声优、导演、游戏制作人等与动漫游戏相关的人物或作品信息时，可以使用这个工具。请确保输入为单个名词（如人名或作品名），避免输入句子或复杂描述。
+        例子：用户输入：丰川祥子与三角初华是什么关系？query：丰川祥子 三角初华
+        Args:
+            query(string): 要查找的人名或作品名的关键词，如：ave mujica、丰川祥子、海猫络合物。
+        """
+        # 获取当前对话 ID
+        # curr_cid = await self.context.conversation_manager.get_curr_conversation_id(event.unified_msg_origin)
+        # context = []
+        #
+        # if curr_cid:
+        #     # 如果当前对话 ID 存在，获取对话对象
+        #     conversation = await self.context.conversation_manager.get_conversation(event.unified_msg_origin, curr_cid)
+        #     if conversation and conversation.history:
+        #         context = json.loads(conversation.history)
+        # else:
+        #     # 如果当前对话 ID 不存在，创建一个新的对话
+        #     curr_cid = await self.context.conversation_manager.new_conversation(event.unified_msg_origin)
+        #     conversation = await self.context.conversation_manager.get_conversation(event.unified_msg_origin, curr_cid)
+        #
+        personality_name = self.context.provider_manager.selected_default_persona.get("name", "default")
+        system_prompt = self.context.provider_manager.selected_default_persona.get("prompt", "")
+        # FIXME: 这里的system_prompt不对
+        # FIXME: 回复时不是这个返回的东西
+
+        # ---------------------------------------------------
+        # 到萌娘百科搜索
+        result = await search_moegirl(query)
+        question = event.message_str
+
+        # 如果找到多篇文章
+        if len(result) > 1:
+            result = await self.filter_wikis_by_title(result, question)
+
+        wiki_chunks = []
+        for k, v in result.items():
+            for chunk in split_text(v, 2500, 200):
+                wiki_chunks.append(f"==文章标题：{k}==\n{chunk}")
+
+        # ------------------------------------------------------------------------
+        # 根据段搜索结果生成回复
+        llm_results = []
+        for wiki_chunk in wiki_chunks:
+            # 让llm根据结果生成回复
+            prompt = f"""请结合下面给出的资料回答问题，这些资料源于萌娘百科
+回复要求：
+1. 从给定资料中提取信息并回答问题。
+2. 根据问题需求，提供简洁、准确、条理分明的回答，避免冗长或偏离主题。
+3. 严格基于用户提供的资料内容回答，不进行主观推测或编造信息。
+4. 若资料中未提及问题相关内容，则指输出：“资料中未找到相关信息”。
+资料：
+{wiki_chunk}
+问题：
+{question}
+"""
+            llm_response = await self.context.get_using_provider().text_chat(
+                prompt=prompt,
+                contexts=[],
+                image_urls=[],
+                system_prompt=system_prompt if len(wiki_chunks) == 1 else "",
+            )
+            res = llm_response.completion_text
+
+            # 如果只有一个结果,则这一次的回答就是最终回答
+            if len(wiki_chunks) == 1:
+                yield event.plain_result(llm_response.completion_text)
+                return
+
+            if "资料中未找到" not in res:
+                llm_results.append(res)
+
+        # ------------------------------------------------------------------------
+        # 总结所有生成的回复
+        if len(llm_results) == 0:
+            yield event.plain_result("在萌娘百科上没有找到相关信息。")
+            return
+        elif len(llm_results) == 1:
+            if personality_name != "default":  # 如果用户有自定义人设
+                # 把回答修改为符合人设的
+                prompt = (f"基于角色以合适的语气、称呼等，修改下面给出的回答，生成符合人设的回答。\n"
+                          f"需要修改的回答：'{llm_results[0]}'")
+                llm_response = await self.context.get_using_provider().text_chat(
+                    prompt=prompt,
+                    contexts=[],
+                    image_urls=[],
+                    system_prompt=system_prompt,
+                )
+                res = llm_response.completion_text
+            else:
+                res = llm_results[0]
+            yield event.plain_result(res)
+            return
+        else:
+            llm_results_text = ""
+            for i, res in enumerate(llm_results):
+                llm_results_text += f"回答{i + 1}：{res}\n"
+            # 总结多个回答
+            prompt = f"""请结合下面给出的资料回答问题
+背景：这些资料是基于萌娘百科搜索结果对问题的回答，因为有些搜索结果中没有问题的答案，可能会提到‘资料中未找到相关信息’，忽略这些无关回答
+回复要求：
+1. 从给定资料中提取有用的信息并回答问题。
+2. 根据问题需求，提供简洁、准确、条理分明的回答，避免偏离主题。
+3. 严格基于用户提供的资料内容回答，不进行主观推测或编造信息。
+4. 若资料中未提及问题相关内容，需明确说明“资料中未找到相关信息”。
+5. 基于角色以合适的语气、称呼等，生成符合人设的回答。
+资料：
+{llm_results_text}
+问题：
+{question}
+"""
+            llm_response = await self.context.get_using_provider().text_chat(
+                prompt=prompt,
+                contexts=[],
+                image_urls=[],
+                system_prompt=system_prompt,
+            )
+            yield event.plain_result(llm_response.completion_text)
+            return
 
     async def terminate(self):
         '''可选择实现 terminate 函数，当插件被卸载/停用时会调用。'''

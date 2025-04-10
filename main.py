@@ -284,7 +284,7 @@ class AnimeGacha(Star):
         titles_str = ""
         for i, t in enumerate(titles):
             titles_str += f"{i + 1}：{t}\n"
-        prompt = f"""请分析以下文章标题，找出哪些与用户提问有关
+        prompt = f"""请分析以下文章标题，找出哪些可能与用户提问有关，有部分关联即可
 提问：{question}
 请用<think>标签包裹你的分析过程，用<answer>标签包裹最后答案，答案应仅包含标题序号，如果有多个，请用、分割：
 {titles_str}"""

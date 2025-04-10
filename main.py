@@ -2,6 +2,10 @@ from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger, llm_tool
 import astrbot.api.message_components as Comp
+from astrbot.core.provider.entities import (
+    ProviderRequest,
+    LLMResponse,
+)
 import random
 import time
 import json
@@ -9,6 +13,14 @@ import json
 from .data_holder import DataHolder, utc8_2_utc9
 from .anime_scraper.moegirl_scraper import search_moegirl
 from .split_long_text import split_text
+
+
+# 在url中添加字符防止被qq过滤
+def make_unobstructed_url(url: str) -> str:
+    url = url.replace("http", "ht删tp")
+    url = url.replace("://", ":删//")
+    url = url.replace("/", "/删")
+    return url
 
 
 @register("anime-gacha",
@@ -25,6 +37,7 @@ class AnimeGacha(Star):
         self.last_update_anime_data_time = 0
 
         self.message_tail_yuc = ("\n" + "=" * 15 + "\n数据来源:長門有C[yuc点wiki]\n" + "=" * 15)
+        self.message_tail_moegirl = ("\n" + "=" * 15 + "\n数据来源:{data}\n" + "=" * 15)
 
     # @filter.command("demo")
     # async def demo(self, event: AstrMessageEvent):
@@ -266,42 +279,89 @@ class AnimeGacha(Star):
 
     # =========================================================================
     # 根据wiki的标题进行过滤
-    async def filter_wikis_by_title(self, wikis: dict, question: str) -> dict:
+    async def filter_wikis_by_title(self, wikis: dict, question: str, contexts: list) -> dict:
         titles = list(wikis.keys())
         titles_str = ""
         for i, t in enumerate(titles):
             titles_str += f"{i + 1}：{t}\n"
-        prompt = f"以下文章标题中，哪些与用户提问：'{question}'有关，请输出它的序号，如果有多个，请用、分割：\n{titles_str}"
+        prompt = f"""请分析以下文章标题，找出哪些与用户提问有关
+提问：{question}
+请用<think>标签包裹你的分析过程，用<answer>标签包裹最后答案，答案应仅包含标题序号，如果有多个，请用、分割：
+{titles_str}"""
 
         # 调用 LLM 判断哪一片文章符合提问
         llm_response = await self.context.get_using_provider().text_chat(
             prompt=prompt,
-            contexts=[],
+            contexts=contexts,
             image_urls=[],
             system_prompt="",
         )
-        selected_titles = llm_response.completion_text.split("、")
-        new_result = {}
-        for t in selected_titles:
-            try:
-                t = int(t) - 1
-                if titles[t] in wikis:
-                    new_result[titles[t]] = wikis[titles[t]]
-            except:
-                continue
-        return new_result
+        # 截取<answer>内的内容
+        logger.info("过滤部分/n" + llm_response.completion_text)
+        answer_str = llm_response.completion_text.split("<answer>")[1].split("</answer>")[0]
+        selected_titles = answer_str.split("、")
+        if len(selected_titles) > 0:
+            new_result = {}
+            for t in selected_titles:
+                try:
+                    t = int(t) - 1
+                    if titles[t] in wikis:
+                        new_result[titles[t]] = wikis[titles[t]]
+                except:
+                    continue
+            return new_result
+        else:
+            return wikis
 
+    # ----------搜索萌娘百科------------
+    # 作为工具
     @llm_tool(name="search_moegirl")
-    async def search_moegirl(self, event: AstrMessageEvent, query: str):
+    async def search_moegirl(self, event: AstrMessageEvent, key_word: str):
         """当需要查询萌娘百科上的动画、游戏、声优、导演、游戏制作人等与动漫游戏相关的人物或作品信息时，可以使用这个工具。请确保输入为单个名词（如人名或作品名），避免输入句子或复杂描述。
-        例子：用户输入：丰川祥子与三角初华是什么关系？query：丰川祥子 三角初华
+        例子：用户输入：丰川祥子与三角初华是什么关系？key_word：丰川祥子 三角初华
         Args:
-            query(string): 要查找的人名或作品名的关键词，如：ave mujica、丰川祥子、海猫络合物。
+            key_word(string): 要查找的人名或作品名的关键词，如：ave mujica、丰川祥子、海猫络合物。
         """
-        # 获取当前对话 ID
+        async for res in self.search_moegirl_by_key_word(event, key_word):
+            yield res
+
+    # 作为命令
+    @filter.command("萌娘搜索")
+    async def search_moegirl_by_command(self, event: AstrMessageEvent, query: str):
+        # 获取对话id
+        curr_cid = await self.context.conversation_manager.get_curr_conversation_id(event.unified_msg_origin)
+        context = []
+
+        if curr_cid:
+            # 如果当前对话 ID 存在，获取对话对象
+            conversation = await self.context.conversation_manager.get_conversation(event.unified_msg_origin, curr_cid)
+            if conversation and conversation.history:
+                context = json.loads(conversation.history)
+
+        prompt = f"""请结合之前的对话内容，分析用户给出的查询，提取出搜索关键词。请确保输出单个名词（如人名或作品名），避免输入句子或复杂描述。
+例子：
+user：丰川祥子与三角初华是什么关系？
+assistant：丰川祥子 三角初华
+问题：
+{query}
+        """
+        llm_response = await self.context.get_using_provider().text_chat(
+            prompt=prompt,
+            contexts=context,
+            image_urls=[],
+            system_prompt="",
+        )
+        async for res in self.search_moegirl_by_key_word(event, llm_response.completion_text):
+            yield res
+
+    # 搜索的主要逻辑部分
+    async def search_moegirl_by_key_word(self, event: AstrMessageEvent, key_word: str):
+        # 获取对话id
         curr_cid = await self.context.conversation_manager.get_curr_conversation_id(event.unified_msg_origin)
         personality_name = "default"
         system_prompt = ""
+        context = []
+
         if curr_cid:
             # 如果当前对话 ID 存在，获取对话对象
             conversation = await self.context.conversation_manager.get_conversation(event.unified_msg_origin, curr_cid)
@@ -311,24 +371,29 @@ class AnimeGacha(Star):
                 if persona.get('name') == personality_name:
                     system_prompt = persona.get("prompt", "")
 
+            if conversation and conversation.history:
+                context = json.loads(conversation.history)[-5:]
+
         # ---------------------------------------------------
         # 到萌娘百科搜索
-        result = await search_moegirl(query)
+        result, data_urls = await search_moegirl(key_word)
+        logger.info(f"找到如下文章{data_urls}")
         question = event.message_str
 
         # 如果找到多篇文章
         if len(result) > 1:
-            result = await self.filter_wikis_by_title(result, question)
+            result = await self.filter_wikis_by_title(result, question, context)
 
         wiki_chunks = []
         for k, v in result.items():
             for chunk in split_text(v, 2500, 200):
-                wiki_chunks.append(f"==文章标题：{k}==\n{chunk}")
+                wiki_chunks.append([k, f"==文章标题：{k}==\n{chunk}"])
 
         # ------------------------------------------------------------------------
         # 根据段搜索结果生成回复
         llm_results = []
-        for wiki_chunk in wiki_chunks:
+        quote_url = {}
+        for title, wiki_chunk in wiki_chunks:
             # 让llm根据结果生成回复
             prompt = f"""请结合下面给出的资料回答问题，这些资料源于萌娘百科
 回复要求：
@@ -343,24 +408,34 @@ class AnimeGacha(Star):
 """
             llm_response = await self.context.get_using_provider().text_chat(
                 prompt=prompt,
-                contexts=[],
+                contexts=context,
                 image_urls=[],
                 system_prompt=system_prompt if len(wiki_chunks) == 1 else "",
             )
             res = llm_response.completion_text
 
+            logger.info(f"对于文章'{title}'中一部分的回答：\n{res}")
+
             # 如果只有一个结果,则这一次的回答就是最终回答
             if len(wiki_chunks) == 1:
-                yield event.plain_result(llm_response.completion_text)
+                quote_url[title] = data_urls[title]
+                res = llm_response.completion_text + self.message_tail_moegirl.format(
+                    data="\n".join([f"{k}:{make_unobstructed_url(v)}" for k, v in quote_url.items()]))
+                await self._save_to_history(event, event.get_extra("provider_request"), llm_response)  # 保存历史记录
+                yield event.plain_result(res)
                 return
 
             if "资料中未找到" not in res:
                 llm_results.append(res)
+                quote_url[title] = data_urls[title]
 
         # ------------------------------------------------------------------------
         # 总结所有生成的回复
+        logger.info("正在总结所有生成的回复")
         if len(llm_results) == 0:
-            yield event.plain_result("在萌娘百科上没有找到相关信息。")
+            res = f"在萌娘百科上没有找到相关信息。"
+            await self._save_to_history(event, event.get_extra("provider_request"), res)
+            yield event.plain_result(res)
             return
         elif len(llm_results) == 1:
             if personality_name != "default" and personality_name != "":  # 如果用户有自定义人设
@@ -376,6 +451,11 @@ class AnimeGacha(Star):
                 res = llm_response.completion_text
             else:
                 res = llm_results[0]
+            # 保存到历史记录
+            await self._save_to_history(event, event.get_extra("provider_request"), res)
+            # 添加引用尾巴
+            res = res + self.message_tail_moegirl.format(
+                data="\n".join([f"{k}:{make_unobstructed_url(v)}" for k, v in quote_url.items()]))
             yield event.plain_result(res)
             return
         else:
@@ -398,12 +478,47 @@ class AnimeGacha(Star):
 """
             llm_response = await self.context.get_using_provider().text_chat(
                 prompt=prompt,
-                contexts=[],
+                contexts=context,
                 image_urls=[],
                 system_prompt=system_prompt,
             )
-            yield event.plain_result(llm_response.completion_text)
+            # 保存到历史记录
+            await self._save_to_history(event, event.get_extra("provider_request"), llm_response)
+            # 添加引用尾巴
+            res = llm_response.completion_text + self.message_tail_moegirl.format(
+                data="\n".join([f"{k}:{make_unobstructed_url(v)}" for k, v in quote_url.items()]))
+            yield event.plain_result(res)
             return
+
+    async def _save_to_history(
+            self, event: AstrMessageEvent, req: ProviderRequest, llm_response: LLMResponse | str
+    ):
+        if not req or not req.conversation or not llm_response:
+            return
+
+        if isinstance(llm_response, LLMResponse) and llm_response.role == "assistant":
+            content = llm_response.completion_text
+        elif isinstance(llm_response, str):  # 这里适配手动输入文本加入到历史记录
+            content = llm_response
+        else:
+            return
+
+        # 文本回复
+        contexts = req.contexts
+        contexts.append(await req.assemble_context())
+
+        # tool calls result
+        if req.tool_calls_result:
+            contexts.extend(req.tool_calls_result.to_openai_messages())
+
+        contexts.append(
+            {"role": "assistant", "content": content}
+        )
+        contexts_to_save = [item for item in contexts if "_no_save" not in item]
+
+        await self.context.conversation_manager.update_conversation(
+            event.unified_msg_origin, req.conversation.cid, history=contexts_to_save
+        )
 
     async def terminate(self):
         '''可选择实现 terminate 函数，当插件被卸载/停用时会调用。'''

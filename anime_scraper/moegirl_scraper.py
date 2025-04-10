@@ -113,7 +113,7 @@ async def search_wiki(query: str) -> tuple[str, str] | None:
     }
     wiki_res = requests.get(url="https://zh.moegirl.org.cn/api.php", params=PARAMS)
     wiki_res = wiki_res.json()
-    print(wiki_res)
+    # print(wiki_res)
     if len(wiki_res[3]) > 0 and len(wiki_res[1]) > 0:
         return wiki_res[1][0], wiki_res[3][0]
     else:
@@ -121,7 +121,7 @@ async def search_wiki(query: str) -> tuple[str, str] | None:
 
 
 # 从萌娘百科中搜索
-async def search_moegirl(query: str) -> dict[str, str]:
+async def search_moegirl(query: str) -> tuple[dict[str, str], dict[str, str]]:
     data_urls = []
     for q in query.split():
         wiki_res = await search_wiki(q)
@@ -135,7 +135,9 @@ async def search_moegirl(query: str) -> dict[str, str]:
             content = await get_md_from_url(url=data_url)
             contents[data_title] = content
             time.sleep(0.5)
-    return contents
+
+    data_urls = {data_title: url for data_title, url in data_urls}
+    return contents, data_urls
 
 
 if __name__ == '__main__':

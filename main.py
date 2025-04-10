@@ -397,7 +397,21 @@ assistant：丰川祥子 三角初华
         quote_url = {}
         for title, wiki_chunk in wiki_chunks:
             # 让llm根据结果生成回复
-            prompt = f"""请结合下面给出的资料回答问题，这些资料源于萌娘百科
+            if len(wiki_chunks) == 1:
+                prompt = f"""请结合下面给出的资料回答问题，这些资料源于萌娘百科
+回复要求：
+1. 从给定资料中提取信息并回答问题。
+2. 根据问题需求，提供简洁、准确、条理分明的回答，避免冗长或偏离主题。
+3. 严格基于用户提供的资料内容回答，不进行主观推测或编造信息。
+4. 若资料中未提及问题相关内容，则指输出：“资料中未找到相关信息”。
+5. 不能使用markdown格式，使用更加口语化的表达
+资料：
+{wiki_chunk}
+问题：
+{question}
+"""
+            else:
+                prompt = f"""请结合下面给出的资料回答问题，这些资料源于萌娘百科
 回复要求：
 1. 从给定资料中提取信息并回答问题。
 2. 根据问题需求，提供简洁、准确、条理分明的回答，避免冗长或偏离主题。
@@ -421,8 +435,8 @@ assistant：丰川祥子 三角初华
             # 如果只有一个结果,则这一次的回答就是最终回答
             if len(wiki_chunks) == 1:
                 quote_url[title] = data_urls[title]
-                res = llm_response.completion_text + self.message_tail_moegirl.format(
-                    data="\n".join([f"{k}:{make_unobstructed_url(v)}" for k, v in quote_url.items()]))
+                res = llm_response.completion_text  # + self.message_tail_moegirl.format(
+                #    data="\n".join([f"{k}:{make_unobstructed_url(v)}" for k, v in quote_url.items()]))
                 await self._save_to_history(event, event.get_extra("provider_request"),
                                             llm_response.completion_text)  # 保存历史记录
                 yield event.plain_result(res)
@@ -443,7 +457,7 @@ assistant：丰川祥子 三角初华
         elif len(llm_results) == 1:
             if personality_name != "default" and personality_name != "":  # 如果用户有自定义人设
                 # 把回答修改为符合人设的
-                prompt = (f"基于角色以合适的语气、称呼等，修改下面给出的回答，生成符合人设的回答。\n"
+                prompt = (f"基于角色以合适的语气、称呼等，修改下面给出的回答，生成符合人设的回答。注意不能使用markdown格式，使用更加口语化的表达。\n"
                           f"需要修改的回答：'{llm_results[0]}'")
                 llm_response = await self.context.get_using_provider().text_chat(
                     prompt=prompt,
@@ -457,8 +471,8 @@ assistant：丰川祥子 三角初华
             # 保存到历史记录
             await self._save_to_history(event, event.get_extra("provider_request"), res)
             # 添加引用尾巴
-            res = res + self.message_tail_moegirl.format(
-                data="\n".join([f"{k}:{make_unobstructed_url(v)}" for k, v in quote_url.items()]))
+            res = res  # + self.message_tail_moegirl.format(
+            #    data="\n".join([f"{k}:{make_unobstructed_url(v)}" for k, v in quote_url.items()]))
             yield event.plain_result(res)
             return
         else:
@@ -474,6 +488,7 @@ assistant：丰川祥子 三角初华
 3. 严格基于用户提供的资料内容回答，不进行主观推测或编造信息。
 4. 若资料中未提及问题相关内容，需明确说明“资料中未找到相关信息”。
 5. 基于角色以合适的语气、称呼等，生成符合人设的回答。
+6. 不能使用markdown格式，使用更加口语化的表达
 资料：
 {llm_results_text}
 问题：
@@ -488,8 +503,8 @@ assistant：丰川祥子 三角初华
             # 保存到历史记录
             await self._save_to_history(event, event.get_extra("provider_request"), llm_response.completion_text)
             # 添加引用尾巴
-            res = llm_response.completion_text + self.message_tail_moegirl.format(
-                data="\n".join([f"{k}:{make_unobstructed_url(v)}" for k, v in quote_url.items()]))
+            res = llm_response.completion_text  # + self.message_tail_moegirl.format(
+            #    data="\n".join([f"{k}:{make_unobstructed_url(v)}" for k, v in quote_url.items()]))
             yield event.plain_result(res)
             return
 

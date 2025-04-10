@@ -351,7 +351,9 @@ assistant：丰川祥子 三角初华
             image_urls=[],
             system_prompt="",
         )
-        async for res in self.search_moegirl_by_key_word(event, llm_response.completion_text):
+        key_word = llm_response.completion_text
+        logger.info(f"搜索关键词：{key_word}")
+        async for res in self.search_moegirl_by_key_word(event, key_word):
             yield res
 
     # 搜索的主要逻辑部分

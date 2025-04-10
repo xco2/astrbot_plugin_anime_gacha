@@ -103,7 +103,7 @@ async def get_md_from_url(url: str) -> str:
 
 
 # 在wiki中搜索
-async def search_wiki(query: str) -> tuple[str, str] | None:
+async def search_wiki_url(query: str) -> dict[str, str] | None:
     PARAMS = {
         "action": "opensearch",
         "namespace": "0",
@@ -115,28 +115,57 @@ async def search_wiki(query: str) -> tuple[str, str] | None:
     wiki_res = wiki_res.json()
     # print(wiki_res)
     if len(wiki_res[3]) > 0 and len(wiki_res[1]) > 0:
-        return wiki_res[1][0], wiki_res[3][0]
+        return {wiki_res[3][0]: wiki_res[1][0]}
     else:
         return None
 
 
+# 在萌娘百科中直接搜索
+async def search_moegirl_url(query: str) -> dict[str, str]:
+    """获取网页内容"""
+    url = f"https://mzh.moegirl.org.cn/index.php?search={query}&title=Special:%E6%90%9C%E7%B4%A2"
+    header = HEADERS
+    header.update({"User-Agent": random.choice(USER_AGENTS)})
+    res = {}
+    async with aiohttp.ClientSession(trust_env=True) as session:
+        async with session.get(url, headers=header, timeout=20) as response:
+            html = await response.text(encoding="utf-8")
+            # print(html)
+            soup = BeautifulSoup(html, "html.parser")
+            searchresults = soup.find_all('div', class_="searchresults")[0]
+            for a in searchresults.find_all('a'):
+                if len(res) >= 3:
+                    break
+                href = "https://mzh.moegirl.org.cn" + a.attrs.get('href')
+                href = href.split("#")[0]  # 去除定位
+                title = BeautifulSoup(a.prettify(), "html.parser").get_text().replace("\n", "").strip()
+                if href in res:
+                    res[href] += f"({title})"
+                else:
+                    res[href] = title
+
+    return res
+
+
 # 从萌娘百科中搜索
 async def search_moegirl(query: str) -> tuple[dict[str, str], dict[str, str]]:
-    data_urls = []
+    data_urls = {}
     for q in query.split():
-        wiki_res = await search_wiki(q)
+        wiki_res = await search_wiki_url(q)
         if wiki_res is not None:
-            data_urls.append(wiki_res)
+            data_urls.update(wiki_res)
         time.sleep(0.5)
+
+    data_urls.update(await search_moegirl_url(query))
 
     contents = {}
     if len(data_urls) > 0:
-        for data_title, data_url in data_urls:
+        for data_url, data_title in data_urls.items():
             content = await get_md_from_url(url=data_url)
             contents[data_title] = content
             time.sleep(0.5)
 
-    data_urls = {data_title: url for data_title, url in data_urls}
+    data_urls = {data_title: data_url for data_url, data_title in data_urls.items()}
     return contents, data_urls
 
 
@@ -144,8 +173,10 @@ if __name__ == '__main__':
     import asyncio
 
     loop = asyncio.get_event_loop()
-    contents = loop.run_until_complete(search_moegirl("若山诗音 2025年 配音"))
+    contents, url_data = loop.run_until_complete(search_moegirl("doro"))
+    print(url_data)
     for k, v in contents.items():
-        with open(f"{k.replace('/', '')}.txt", "w", encoding='utf-8') as f:
-            f.write(v)
+        # with open(f"{k.replace('/', '')}.txt", "w", encoding='utf-8') as f:
+        #     f.write(v)
         print(k, v[:100])
+        print("-" * 60)

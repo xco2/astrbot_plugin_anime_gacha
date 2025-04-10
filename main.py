@@ -2,10 +2,10 @@ from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger, llm_tool
 import astrbot.api.message_components as Comp
-from astrbot.core.provider.entities import (
-    ProviderRequest,
-    LLMResponse,
-)
+# from astrbot.core.provider.entities import (
+#     ProviderRequest,
+#     LLMResponse,
+# )
 import random
 import time
 import json
@@ -423,7 +423,8 @@ assistant：丰川祥子 三角初华
                 quote_url[title] = data_urls[title]
                 res = llm_response.completion_text + self.message_tail_moegirl.format(
                     data="\n".join([f"{k}:{make_unobstructed_url(v)}" for k, v in quote_url.items()]))
-                await self._save_to_history(event, event.get_extra("provider_request"), llm_response)  # 保存历史记录
+                await self._save_to_history(event, event.get_extra("provider_request"),
+                                            llm_response.completion_text)  # 保存历史记录
                 yield event.plain_result(res)
                 return
 
@@ -485,7 +486,7 @@ assistant：丰川祥子 三角初华
                 system_prompt=system_prompt,
             )
             # 保存到历史记录
-            await self._save_to_history(event, event.get_extra("provider_request"), llm_response)
+            await self._save_to_history(event, event.get_extra("provider_request"), llm_response.completion_text)
             # 添加引用尾巴
             res = llm_response.completion_text + self.message_tail_moegirl.format(
                 data="\n".join([f"{k}:{make_unobstructed_url(v)}" for k, v in quote_url.items()]))
@@ -493,13 +494,11 @@ assistant：丰川祥子 三角初华
             return
 
     async def _save_to_history(
-            self, event: AstrMessageEvent, req: ProviderRequest, llm_response: LLMResponse | str
+            self, event: AstrMessageEvent, req, llm_response: str
     ):
         if not req or not req.conversation or not llm_response:
             return
 
-        if isinstance(llm_response, LLMResponse) and llm_response.role == "assistant":
-            content = llm_response.completion_text
         elif isinstance(llm_response, str):  # 这里适配手动输入文本加入到历史记录
             content = llm_response
         else:

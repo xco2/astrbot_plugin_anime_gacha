@@ -132,8 +132,10 @@ async def search_moegirl_url(query: str) -> dict[str, str]:
             html = await response.text(encoding="utf-8")
             # print(html)
             soup = BeautifulSoup(html, "html.parser")
-            searchresults = soup.find_all('div', class_="searchresults")[0]
-            for a in searchresults.find_all('a'):
+            searchresults = soup.find_all('div', class_="searchresults")
+            if len(searchresults) == 0:
+                return res
+            for a in searchresults[0].find_all('a'):
                 if len(res) >= 3:
                     break
                 href = "https://mzh.moegirl.org.cn" + a.attrs.get('href')

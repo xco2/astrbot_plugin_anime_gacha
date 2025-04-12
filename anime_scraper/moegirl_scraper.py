@@ -106,12 +106,19 @@ async def get_md_from_url(url: str) -> str:
 async def search_wiki_url(query: str) -> dict[str, str] | None:
     PARAMS = {
         "action": "opensearch",
-        "namespace": "0",
+        "namespace": "*",
         "search": query,
-        "limit": "1",
+        "limit": "3",
         "format": "json"
     }
+    # PARAMS = {
+    #     "action": "query",  # opensearch
+    #     "list": "search",
+    #     "srsearch": query,
+    #     "format": "json"
+    # }
     wiki_res = requests.get(url="https://zh.moegirl.org.cn/api.php", params=PARAMS)
+    # print(wiki_res.text)
     wiki_res = wiki_res.json()
     # print(wiki_res)
     if len(wiki_res[3]) > 0 and len(wiki_res[1]) > 0:
@@ -123,14 +130,14 @@ async def search_wiki_url(query: str) -> dict[str, str] | None:
 # 在萌娘百科中直接搜索
 async def search_moegirl_url(query: str) -> dict[str, str]:
     """获取网页内容"""
-    url = f"https://mzh.moegirl.org.cn/index.php?search={query}&title=Special:%E6%90%9C%E7%B4%A2"
+    url = f"https://zh.moegirl.org.cn/index.php?search={query}&title=Special:%E6%90%9C%E7%B4%A2"
     header = HEADERS
     header.update({"User-Agent": random.choice(USER_AGENTS)})
     res = {}
     async with aiohttp.ClientSession(trust_env=True) as session:
         async with session.get(url, headers=header, timeout=20) as response:
             html = await response.text(encoding="utf-8")
-            # print(html)
+            print(html)
             soup = BeautifulSoup(html, "html.parser")
             searchresults = soup.find_all('div', class_="searchresults")
             if len(searchresults) == 0:
@@ -175,10 +182,12 @@ if __name__ == '__main__':
     import asyncio
 
     loop = asyncio.get_event_loop()
-    contents, url_data = loop.run_until_complete(search_moegirl("doro"))
-    print(url_data)
-    for k, v in contents.items():
-        # with open(f"{k.replace('/', '')}.txt", "w", encoding='utf-8') as f:
-        #     f.write(v)
-        print(k, v[:100])
-        print("-" * 60)
+    # contents = loop.run_until_complete(search_wiki_url("直到某魔女死去"))
+    contents = loop.run_until_complete(search_moegirl_url("doro "))
+    # contents, url_data = loop.run_until_complete(search_moegirl("doro"))
+    # print(url_data)
+    # for k, v in contents.items():
+    #     # with open(f"{k.replace('/', '')}.txt", "w", encoding='utf-8') as f:
+    #     #     f.write(v)
+    #     print(k, v[:100])
+    #     print("-" * 60)

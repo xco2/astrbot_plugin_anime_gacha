@@ -317,8 +317,9 @@ class AnimeGacha(Star):
     # 作为工具
     @llm_tool(name="search_moegirl")
     async def search_moegirl(self, event: AstrMessageEvent, key_word: str):
-        """当需要查询萌娘百科上的动画、游戏、声优、导演、游戏制作人等与动漫游戏相关的人物或作品信息时，可以使用这个工具。请确保输入为单个名词（如人名或作品名），避免输入句子或复杂描述。
-        例子：用户输入：丰川祥子与三角初华是什么关系？key_word：丰川祥子 三角初华
+        """当需要查询萌娘百科上的动画、游戏、声优、导演、游戏制作人等与动漫游戏相关的人物或作品信息时，可以使用这个工具。请确保输入为人名或作品名，避免输入句子或复杂描述。
+        例子1：用户输入：丰川祥子与三角初华是什么关系？key_word：丰川祥子 三角初华
+        例子2：用户输入：《直到某魔女死去》的是讲什么的？key_word：直到某魔女死去
         Args:
             key_word(string): 要查找的人名或作品名的关键词，如：ave mujica、丰川祥子、海猫络合物。
         """
@@ -338,10 +339,13 @@ class AnimeGacha(Star):
             if conversation and conversation.history:
                 context = json.loads(conversation.history)
 
-        prompt = f"""请结合之前的对话内容，分析用户给出的查询，提取出搜索关键词。请确保输出单个名词（如人名或作品名），避免输入句子或复杂描述。
-例子：
+        prompt = f"""请结合之前的对话内容，分析用户给出的查询，提取出搜索关键词。请确保输出人名或作品名，避免输入句子或复杂描述。
+例子1：
 user：丰川祥子与三角初华是什么关系？
 assistant：丰川祥子 三角初华
+例子2：
+user：《直到某魔女死去》的是讲什么的？
+assistant：直到某魔女死去
 问题：
 {query}
         """

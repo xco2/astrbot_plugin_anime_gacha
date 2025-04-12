@@ -137,10 +137,10 @@ async def search_moegirl_url(query: str) -> dict[str, str]:
     async with aiohttp.ClientSession(trust_env=True) as session:
         async with session.get(url, headers=header, timeout=20) as response:
             html = await response.text(encoding="utf-8")
-            print(html)
             soup = BeautifulSoup(html, "html.parser")
             searchresults = soup.find_all('div', class_="searchresults")
             if len(searchresults) == 0:
+                print("萌娘百科网页搜索失败")
                 return res
             for a in searchresults[0].find_all('a'):
                 if len(res) >= 3:

@@ -30,8 +30,8 @@ pip install -r requirements.txt
   - 访问`萌娘百科网页搜索`可能需要验证，这时会只依靠`萌娘百科MediaWiki API`的搜索结果回答
   - `萌娘百科MediaWiki API`对搜索关键词比较敏感，需要给大模型提供更准确的搜索关键词
 
-## 效果展示
-
+#### 效果展示
+![doro](./imgs/doro.png)
 
 ## 📅 开发计划
 - [x] 可以通过萌娘百科进行搜索

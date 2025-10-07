@@ -135,7 +135,7 @@ async def download_new_anime_datas(schedule_time: str) -> dict:
             details_block=None
             # 找到每天更新的番剧和番剧的详细信息对应的HTML块
             for block in blocks:
-                if "周一 (月)" in block:
+                if "周一 (月)" in block or "周二 (火)" in block or "周三 (水)" in block or "周四 (木)" in block or "周五 (金)" in block or "周六 (土)" in block or "周日 (日)" in block:
                     daily_anime_block = block
                 elif "原作：" in block or "导演：" in block or "动画制作：" in block:
                     details_block = block

@@ -126,12 +126,23 @@ async def download_new_anime_datas(schedule_time: str) -> dict:
     response = requests.get(url)
     anime_datas = {}
     if response.status_code == 200:
+        response.encoding = 'utf-8' # 保证中文标题能正常解析
         soup = BeautifulSoup(response.text, "html.parser")
         div = soup.find("div", {"class": "post-body"})
         blocks = str(div).split("<hr/>")
         if len(blocks) >= 2:
-            daily_anime = BeautifulSoup(blocks[-2], "html.parser")  # 每天更新的番剧
-            details = BeautifulSoup(blocks[-1], "html.parser")  # 番剧的详细信息
+            daily_anime_block=None
+            details_block=None
+            # 找到每天更新的番剧和番剧的详细信息对应的HTML块
+            for block in blocks:
+                if "周一 (月)" in block:
+                    daily_anime_block = block
+                elif "原作：" in block or "导演：" in block or "动画制作：" in block:
+                    details_block = block
+                if daily_anime_block is not None and details_block is not None:
+                    break
+            daily_anime = BeautifulSoup(daily_anime_block, "html.parser")  # 每天更新的番剧
+            details = BeautifulSoup(details_block, "html.parser")  # 番剧的详细信息
         else:
             daily_anime = None
             # details = BeautifulSoup(blocks[0], "html.parser")

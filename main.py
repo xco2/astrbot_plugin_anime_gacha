@@ -26,7 +26,7 @@ def make_unobstructed_url(url: str) -> str:
 @register("anime-gacha",
           "xco2",
           "抽番",
-          "0.5.0",
+          "1.1.1",
           "https://github.com/xco2/astrbot_plugin_anime_gacha")
 class AnimeGacha(Star):
     def __init__(self, context: Context):
@@ -152,7 +152,7 @@ class AnimeGacha(Star):
         temp = """{index}.《{anime_name}》\n{state}\n"""
         result_str = f"==={today_data.pop('现在时间')}===\n"
         for line_index, (anime_name, value) in enumerate(today_data.get("当前季度", {}).items()):
-            state = value['state']
+            state = value.get('state', [])
             for i in range(len(state)):
                 if ':' in state[i]:
                     state[i] = state[i].replace("~", "")
@@ -276,6 +276,33 @@ class AnimeGacha(Star):
         temp += self.message_tail_yuc
 
         yield event.plain_result(temp)
+
+    @filter.command("检查番剧数据")
+    async def anime_data_show(self, event: AstrMessageEvent):
+        result = sorted(list(self.data_holder.anime_datas.keys()), reverse=True)
+        if "version" in result:
+            result.remove("version")
+
+        now_schedule_time = self.data_holder.get_now_schedule_time()
+        now_year = int(now_schedule_time[:4])
+        now_month = int(now_schedule_time[4:6])
+        all_schedule_time = set()
+        for y in range(now_year, 2018, -1):
+            start_m = now_month if y == now_year else 10
+            end_m = 7 if y == 2019 else 0
+            for m in range(start_m, end_m, -3):
+                all_schedule_time.add(f"{y}{m:02}")
+
+        miss_schedule_times = all_schedule_time - set(result)
+
+        result_str = "已有的季度数据：\n"
+        result_str+="，".join(result)
+
+        if len(miss_schedule_times) > 0:
+            result_str += "=" * 15 + "\n"
+            result_str += "以下季度数据缺失:\n"
+            result_str += "，".join(miss_schedule_times)
+        yield event.plain_result(result_str)
 
     # =========================================================================
     # 根据wiki的标题进行过滤
@@ -461,8 +488,9 @@ assistant：直到某魔女死去
         elif len(llm_results) == 1:
             if personality_name != "default" and personality_name != "":  # 如果用户有自定义人设
                 # 把回答修改为符合人设的
-                prompt = (f"基于角色以合适的语气、称呼等，修改下面给出的回答，生成符合人设的回答。注意不能使用markdown格式，使用更加口语化的表达。\n"
-                          f"需要修改的回答：'{llm_results[0]}'")
+                prompt = (
+                    f"基于角色以合适的语气、称呼等，修改下面给出的回答，生成符合人设的回答。注意不能使用markdown格式，使用更加口语化的表达。\n"
+                    f"需要修改的回答：'{llm_results[0]}'")
                 llm_response = await self.context.get_using_provider().text_chat(
                     prompt=prompt,
                     contexts=[],

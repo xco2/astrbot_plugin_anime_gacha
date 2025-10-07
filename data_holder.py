@@ -177,7 +177,7 @@ class DataHolder:
         for start_date in quarter_starts:
             if start_date > current_date:
                 return (start_date - current_date).days
-        next_quarter_start = datetime.date(current_date.year + 1, 1, 1)
+        next_quarter_start = date(current_date.year + 1, 1, 1)
         return (next_quarter_start - current_date).days
 
     # 获取下一个季度的时间名称

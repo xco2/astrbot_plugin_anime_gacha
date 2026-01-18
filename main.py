@@ -145,7 +145,7 @@ class AnimeGacha(Star):
             today_data = await self.data_holder.get_today_update_animes(update_now)
             self.last_update_anime_data_time = time.time()
         except Exception as e:
-            logger.error(f"获取今日更新番剧数据失败: {e}")
+            logger.exception(f"获取今日更新番剧数据失败: {e}")
             yield event.plain_result("获取今日更新番剧数据失败")
             return
 

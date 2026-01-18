@@ -1,6 +1,7 @@
 import requests
 from bs4 import BeautifulSoup, Tag
 import re
+from astrbot.api import logger
 
 
 def anime_html_table_to_json(table: BeautifulSoup) -> dict:
@@ -22,8 +23,12 @@ def anime_html_table_to_json(table: BeautifulSoup) -> dict:
     # 提取动画类型
     try:
         result['anime_type'] = table.select('td[rowspan="2"][colspan="2"]')[0].parent.find_all("td")[1].get_text()
-    except:
-        result['anime_type'] = table.select('td[colspan="2"]')[0].parent.find_all("td")[1].get_text()
+    except Exception as e:
+        try:
+            result['anime_type'] = table.select('td[colspan="2"]')[0].parent.find_all("td")[1].get_text()
+        except Exception as e:
+            result['anime_type']="未知"
+            logger.exception(e)
 
     # 提取类型和标签（定位第一个<tr>的第三个<td>）
     rows = table.find_all('tr')
@@ -178,7 +183,8 @@ async def download_new_anime_datas(schedule_time: str) -> dict:
         anime_datas["anime_details"] = {}
         for ad in anime_details:
             d = anime_html_table_to_json(ad)
-            anime_datas["anime_details"].update({d["title_cn"]: d})
+            if "title_cn" in d:
+                anime_datas["anime_details"].update({d["title_cn"]: d})
 
     else:
         raise ValueError(f"获取番剧信息失败, 无法访问:{url}")

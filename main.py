@@ -152,7 +152,12 @@ class AnimeGacha(Star):
         temp = """{index}.《{anime_name}》\n{state}\n"""
         result_str = f"==={today_data.pop('现在时间')}===\n"
         for line_index, (anime_name, value) in enumerate(today_data.get("当前季度", {}).items()):
-            state = value.get('state', [])
+            if isinstance(value, dict):
+                state = value.get('state', [])
+            elif isinstance(value, list):
+                state = value
+            else:
+                state = [str(value)] if value else []
             for i in range(len(state)):
                 if ':' in state[i]:
                     state[i] = state[i].replace("~", "")
@@ -163,13 +168,18 @@ class AnimeGacha(Star):
                     state[i] = "更新日期:" + state[i]
 
             result_str += temp.format(index=line_index + 1, anime_name=anime_name,
-                                      state="\n - ".join(value['state'])).replace("~", r"\~")
+                                      state="\n - ".join(state)).replace("~", r"\~")
             result_str += "-" * 15 + "\n"
 
         if len(today_data.get("下一季度", {})) > 0:
             result_str += "===下一季度===\n"
             for line_index, (anime_name, value) in enumerate(today_data.get("下一季度", {}).items()):
-                state = value['state']
+                if isinstance(value, dict):
+                    state = value.get('state', [])
+                elif isinstance(value, list):
+                    state = value
+                else:
+                    state = [str(value)] if value else []
                 for i in range(len(state)):
                     if ':' in state[i]:
                         state[i] = state[i].replace("~", "")
@@ -180,7 +190,7 @@ class AnimeGacha(Star):
                         state[i] = "更新日期:" + state[i]
 
                 result_str += temp.format(index=line_index + 1, anime_name=anime_name,
-                                          state="\n - ".join(value['state'])).replace("~", r"\~")
+                                          state="\n - ".join(state)).replace("~", r"\~")
                 result_str += "-" * 15 + "\n"
 
         result_str += self.message_tail_yuc
@@ -311,10 +321,12 @@ class AnimeGacha(Star):
         titles_str = ""
         for i, t in enumerate(titles):
             titles_str += f"{i + 1}：{t}\n"
+        # region 过滤标题prompt
         prompt = f"""请分析以下文章标题，找出哪些可能与用户提问有关，有部分关联即可
 提问：{question}
 请用<think>标签包裹你的分析过程，用<answer>标签包裹最后答案，答案应仅包含标题序号，如果有多个，请用、分割：
 {titles_str}"""
+        # endregion
 
         # 调用 LLM 判断哪一片文章符合提问
         llm_response = await self.context.get_using_provider().text_chat(
@@ -353,40 +365,6 @@ class AnimeGacha(Star):
         async for res in self.search_moegirl_by_key_word(event, key_word):
             yield res
 
-    # 作为命令
-    @filter.command("萌娘搜索")
-    async def search_moegirl_by_command(self, event: AstrMessageEvent, query: str):
-        # 获取对话id
-        curr_cid = await self.context.conversation_manager.get_curr_conversation_id(event.unified_msg_origin)
-        context = []
-
-        if curr_cid:
-            # 如果当前对话 ID 存在，获取对话对象
-            conversation = await self.context.conversation_manager.get_conversation(event.unified_msg_origin, curr_cid)
-            if conversation and conversation.history:
-                context = json.loads(conversation.history)
-
-        prompt = f"""请结合之前的对话内容，分析用户给出的查询，提取出搜索关键词。请确保输出人名或作品名，避免输入句子或复杂描述。
-例子1：
-user：丰川祥子与三角初华是什么关系？
-assistant：丰川祥子 三角初华
-例子2：
-user：《直到某魔女死去》的是讲什么的？
-assistant：直到某魔女死去
-问题：
-{query}
-        """
-        llm_response = await self.context.get_using_provider().text_chat(
-            prompt=prompt,
-            contexts=context,
-            image_urls=[],
-            system_prompt="",
-        )
-        key_word = llm_response.completion_text
-        logger.info(f"搜索关键词：{key_word}")
-        async for res in self.search_moegirl_by_key_word(event, key_word):
-            yield res
-
     # 搜索的主要逻辑部分
     async def search_moegirl_by_key_word(self, event: AstrMessageEvent, key_word: str):
         # 获取对话id
@@ -419,7 +397,7 @@ assistant：直到某魔女死去
 
         wiki_chunks = []
         for k, v in result.items():
-            for chunk in split_text(v, 2500, 200):
+            for chunk in split_text(v, 20000, 200):
                 wiki_chunks.append([k, f"==文章标题：{k}==\n{chunk}"])
 
         # ------------------------------------------------------------------------
@@ -428,118 +406,49 @@ assistant：直到某魔女死去
         quote_url = {}
         for title, wiki_chunk in wiki_chunks:
             # 让llm根据结果生成回复
-            if len(wiki_chunks) == 1:
-                prompt = f"""请结合下面给出的资料回答问题，这些资料源于萌娘百科
-回复要求：
-1. 从给定资料中提取信息并回答问题。
-2. 根据问题需求，提供简洁、准确、条理分明的回答，避免冗长或偏离主题。
-3. 严格基于用户提供的资料内容回答，不进行主观推测或编造信息。
-4. 若资料中未提及问题相关内容，则指输出：“资料中未找到相关信息”。
-5. 不能使用markdown格式，使用更加口语化的表达
+
+            # region 生成回复prompt
+            prompt = f"""请结合下面给出的资料回答问题，这些资料源于萌娘百科
 资料：
 {wiki_chunk}
 问题：
 {question}
 """
-            else:
-                prompt = f"""请结合下面给出的资料回答问题，这些资料源于萌娘百科
+            # endregion
+
+            # region 系统提示词
+            chunk_llm_system_prompt = """你是萌娘百科的助手，请根据用户的问题，从给定的资料中提取信息并回答问题。
 回复要求：
 1. 从给定资料中提取信息并回答问题。
 2. 根据问题需求，提供简洁、准确、条理分明的回答，避免冗长或偏离主题。
 3. 严格基于用户提供的资料内容回答，不进行主观推测或编造信息。
 4. 若资料中未提及问题相关内容，则指输出：“资料中未找到相关信息”。
-资料：
-{wiki_chunk}
-问题：
-{question}
 """
+            # endregion
+
             llm_response = await self.context.get_using_provider().text_chat(
                 prompt=prompt,
                 contexts=context,
                 image_urls=[],
-                system_prompt=system_prompt if len(wiki_chunks) == 1 else "",
+                system_prompt=chunk_llm_system_prompt,
             )
             res = llm_response.completion_text
 
             logger.info(f"对于文章'{title}'中一部分的回答：\n{res}")
-
-            # 如果只有一个结果,则这一次的回答就是最终回答
-            if len(wiki_chunks) == 1:
-                quote_url[title] = data_urls[title]
-                res = llm_response.completion_text  # + self.message_tail_moegirl.format(
-                #    data="\n".join([f"{k}:{make_unobstructed_url(v)}" for k, v in quote_url.items()]))
-                await self._save_to_history(event, event.get_extra("provider_request"),
-                                            llm_response.completion_text)  # 保存历史记录
-                yield event.plain_result(res)
-                return
 
             if "资料中未找到" not in res:
                 llm_results.append(res)
                 quote_url[title] = data_urls[title]
 
         # ------------------------------------------------------------------------
-        # 总结所有生成的回复
-        logger.info("正在总结所有生成的回复")
+        # 直接返回结果
         if len(llm_results) == 0:
             res = f"在萌娘百科上没有找到相关信息。"
-            await self._save_to_history(event, event.get_extra("provider_request"), res)
-            yield event.plain_result(res)
-            return
-        elif len(llm_results) == 1:
-            if personality_name != "default" and personality_name != "":  # 如果用户有自定义人设
-                # 把回答修改为符合人设的
-                prompt = (
-                    f"基于角色以合适的语气、称呼等，修改下面给出的回答，生成符合人设的回答。注意不能使用markdown格式，使用更加口语化的表达。\n"
-                    f"需要修改的回答：'{llm_results[0]}'")
-                llm_response = await self.context.get_using_provider().text_chat(
-                    prompt=prompt,
-                    contexts=[],
-                    image_urls=[],
-                    system_prompt=system_prompt,
-                )
-                res = llm_response.completion_text
-            else:
-                res = llm_results[0]
-            # 保存到历史记录
-            await self._save_to_history(event, event.get_extra("provider_request"), res)
-            # 添加引用尾巴
-            res = res  # + self.message_tail_moegirl.format(
-            #    data="\n".join([f"{k}:{make_unobstructed_url(v)}" for k, v in quote_url.items()]))
-            yield event.plain_result(res)
-            return
+            yield res
         else:
-            llm_results_text = ""
-            for i, res in enumerate(llm_results):
-                llm_results_text += f"回答{i + 1}：{res}\n"
-            # 总结多个回答
-            prompt = f"""请结合下面给出的资料回答问题
-背景：这些资料是基于萌娘百科搜索结果对问题的回答，因为有些搜索结果中没有问题的答案，可能会提到‘资料中未找到相关信息’，忽略这些无关回答
-回复要求：
-1. 从给定资料中提取有用的信息并回答问题。
-2. 根据问题需求，提供简洁、准确、条理分明的回答，避免偏离主题。
-3. 严格基于用户提供的资料内容回答，不进行主观推测或编造信息。
-4. 若资料中未提及问题相关内容，需明确说明“资料中未找到相关信息”。
-5. 基于角色以合适的语气、称呼等，生成符合人设的回答。
-6. 不能使用markdown格式，使用更加口语化的表达
-资料：
-{llm_results_text}
-问题：
-{question}
-"""
-            llm_response = await self.context.get_using_provider().text_chat(
-                prompt=prompt,
-                contexts=context,
-                image_urls=[],
-                system_prompt=system_prompt,
-            )
-            # 保存到历史记录
-            await self._save_to_history(event, event.get_extra("provider_request"), llm_response.completion_text)
-            # 添加引用尾巴
-            res = llm_response.completion_text  # + self.message_tail_moegirl.format(
-            #    data="\n".join([f"{k}:{make_unobstructed_url(v)}" for k, v in quote_url.items()]))
-            yield event.plain_result(res)
-            return
+            yield "\n".join(llm_results)
 
+    # 弃用了
     async def _save_to_history(
             self, event: AstrMessageEvent, req, llm_response: str
     ):

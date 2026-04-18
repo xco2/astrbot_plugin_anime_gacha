@@ -1,227 +1,158 @@
-import requests
-from bs4 import BeautifulSoup, Tag
-import re
-from astrbot.api import logger
+import asyncio
+import time
+
+try:
+    from .scraper_2601 import get_today_recommend
+    from .scraper_2604 import download_new_anime_datas as download_new_anime_datas_2604
+    from .scraper_2601 import download_new_anime_datas as download_new_anime_datas_2601
+except ImportError:
+    from scraper_2601 import get_today_recommend
+    from scraper_2604 import download_new_anime_datas as download_new_anime_datas_2604
+    from scraper_2601 import download_new_anime_datas as download_new_anime_datas_2601
+
+ROUTE_THRESHOLD = "202604"
+TEST_SCHEDULE_TIMES = [
+    "202604",
+    "202601",
+    "202510",
+    "202507",
+    "202504",
+    "202501",
+    "202410",
+    "202407",
+    "202404",
+    "202401",
+    "202310",
+    "202307",
+    "202304",
+    "202301",
+    "202210",
+    "202207",
+    "202204",
+    "202201",
+    "202110",
+    "202107",
+    "202104",
+    "202101",
+    "202010",
+    "202007",
+    "202004",
+    "202001",
+    "201910",
+]
 
 
-def anime_html_table_to_json(table: BeautifulSoup) -> dict:
-    """
-    将番剧的HTML表格转换为JSON格式数据
-    """
-    result = {}
-
-    # 提取标题部分（定位第一个包含两个<p>的<td>）
-    title_td = table.select('td[rowspan="2"][colspan="2"]')
-    if len(title_td) == 0:
-        title_td = table.select('td[colspan="2"]')
-    if title_td:
-        titles = title_td[0].find_all('p')
-        if len(titles) >= 2:
-            result["title_cn"] = titles[0].get_text(strip=True)
-            result["title_jp"] = titles[1].get_text(strip=True)
-
-    # 提取动画类型
-    try:
-        result['anime_type'] = table.select('td[rowspan="2"][colspan="2"]')[0].parent.find_all("td")[1].get_text()
-    except Exception as e:
-        try:
-            result['anime_type'] = table.select('td[colspan="2"]')[0].parent.find_all("td")[1].get_text()
-        except Exception as e:
-            result['anime_type']="未知"
-            logger.exception(e)
-
-    # 提取类型和标签（定位第一个<tr>的第三个<td>）
-    rows = table.find_all('tr')
-    if len(rows) >= 2:
-        for td in rows[0].find_all('td'):
-            is_type_td = False
-            for c in td.attrs.get("class", []):
-                if c.startswith("type"):
-                    is_type_td = True
-                    break
-            if is_type_td:
-                result["type"] = td.get_text(strip=True)
-
-        result["tags"] = []
-        tag_td = rows[1].find_all('td')[0]
-        for c in tag_td.attrs.get("class", []):
-            if c.startswith("type_tag"):
-                result["tags"] = tag_td.get_text(strip=True).split('/')
-
-    # 提取制作人员（匹配中文职位名称）
-    staff_pattern = re.compile(  # 匹配中英日职位名称
-        r'([a-zA-Z\u4e00-\u9fa5\u3040-\u309F\u30A0-\u30FF\uff21-\uff3a\uff41-\uff5a]+)\s*：\s*(.+)$')
-    staff_data = {}
-    for td in table.select('td[rowspan="2"]'):
-        is_staff_block = False
-        for c in td.attrs.get('class', []):
-            if c.startswith("staff"):
-                is_staff_block = True
-                break
-        if not is_staff_block:
-            continue
-        lines = [line.strip() for line in td.stripped_strings]
-        last_key = None
-        for line in lines:
-            if "/" in line and "：" in line:
-                sublines = [l.strip() for l in line.split("/")]
-            else:
-                sublines = [line]
-            for line in sublines:
-                line = line.replace("\n", "").replace("\t", "").replace("&amp", "").replace("\u3000", "")
-                match = staff_pattern.match(line)
-                if match is not None:
-                    key = match.group(1)
-                    key = re.sub(r'\s', '', key)
-                    last_key = key
-                    value = match.group(2)
-                    if key in staff_data:  # 处理多人同职位
-                        staff_data[key] += f"、{value}"
-                    else:
-                        staff_data[key] = value
-                else:  # 一个职位多个人的情况
-                    if last_key is not None:
-                        if "(" in line or ")" in line:
-                            # 例如下的情况
-                            # 原作：篠原健太
-                            # (少年Jump/集英社)
-                            staff_data[last_key] += line
-                        else:
-                            staff_data[last_key] += f"、{line}"
-    result["staff"] = staff_data
-
-    # 提取声优阵容（定位与制作人员同行的<td>）
-    cast = []
-    for td in table.select('td[rowspan="2"] + td[rowspan="2"]'):
-        cast = [name.strip() for name in td.stripped_strings]
-    result["cast"] = cast
-
-    # 提取链接和播放信息（匹配特定文本特征）
-    link_data = {}
-    broadcast = {}
-    for td in table.select('td:has(a):has(p)'):
-        # 处理链接
-        for a in td.find_all('a'):
-            text = a.get_text(strip=True)
-            if "官网" in text:
-                link_data["official"] = a['href']
-            elif "PV" in text:
-                link_data["pv"] = a['href']
-
-        # 处理播放信息
-        for p in td.find_all('p'):
-            text = p.get_text(strip=True)
-            if "周" in text or "月" in text:
-                broadcast["time"] = text
-            elif "话" in text:
-                broadcast["episodes"] = text.strip('()')
-
-    result["links"] = link_data
-    result["broadcast"] = broadcast
-
-    return result
+def _resolve_scraper(schedule_time: str):
+    if schedule_time >= ROUTE_THRESHOLD:
+        return "2604", download_new_anime_datas_2604
+    return "2601", download_new_anime_datas_2601
 
 
 async def download_new_anime_datas(schedule_time: str) -> dict:
-    """
-    获取一个季度的番剧信息
-    :param schedule_time: 季度，如202501 代表2025年1月新番
-    """
-    url = f"https://yuc.wiki/{schedule_time}"
-    response = requests.get(url)
-    anime_datas = {}
-    if response.status_code == 200:
-        response.encoding = 'utf-8' # 保证中文标题能正常解析
-        soup = BeautifulSoup(response.text, "html.parser")
-        div = soup.find("div", {"class": "post-body"})
-        blocks = str(div).split("<hr/>")
-        if len(blocks) >= 2:
-            daily_anime_block=None
-            details_block=None
-            # 找到每天更新的番剧和番剧的详细信息对应的HTML块
-            for block in blocks:
-                if "周一 (月)" in block or "周二 (火)" in block or "周三 (水)" in block or "周四 (木)" in block or "周五 (金)" in block or "周六 (土)" in block or "周日 (日)" in block:
-                    daily_anime_block = block
-                elif "原作：" in block or "导演：" in block or "动画制作：" in block:
-                    details_block = block
-                if daily_anime_block is not None and details_block is not None:
-                    break
-            daily_anime = BeautifulSoup(daily_anime_block, "html.parser")  # 每天更新的番剧
-            details = BeautifulSoup(details_block, "html.parser")  # 番剧的详细信息
-        else:
-            daily_anime = None
-            # details = BeautifulSoup(blocks[0], "html.parser")
-            details = soup
-
-        if schedule_time == "202007":
-            # 受疫情影响，7月番的档期被众多只能播出几集的4月番填补，已定档的新番大都顺延一个季度。
-            # 所以这个季度的番剧数据会缺失，所以这里不再处理7月番的情况。
-            daily_anime = None
-
-        anime_datas["daily_anime"] = {}
-        if daily_anime is not None:
-            daily_animes = [item for item in daily_anime if isinstance(item, Tag)]
-            while len(daily_animes) == 1:
-                daily_animes = [item for item in daily_animes[0] if isinstance(item, Tag) and item.name == "div"]
-            daily_animes = [[daily_animes[i], daily_animes[i + 1]] for i in range(0, len(daily_animes), 3)]
-            for da in daily_animes:
-                title = da[0].text.strip()  # 星期几
-                anime_datas["daily_anime"][title] = {}
-                for anime in [item for item in da[1] if isinstance(item, Tag)]:
-                    if anime.find("td") is not None:
-                        anime_name = anime.find("td").text.strip()  # 番剧名
-                        anime_state = [p.text for p in anime.find_all("p") if
-                                       p.get("class") != ["area"]]  # 番剧状态 播出时间和总集数
-                        anime_image_url = anime.find("a").get("href") if anime.find("a") else ""  # 番剧封面图片链接
-                        anime_datas["daily_anime"][title].update(
-                            {anime_name: {"state": anime_state, "image_url": anime_image_url}})
-
-        # -------------------------------------------------------------------------
-
-        anime_details = details.find_all("table")
-
-        anime_datas["anime_details"] = {}
-        for ad in anime_details:
-            d = anime_html_table_to_json(ad)
-            if "title_cn" in d:
-                anime_datas["anime_details"].update({d["title_cn"]: d})
-
-    else:
-        raise ValueError(f"获取番剧信息失败, 无法访问:{url}")
-
-    return anime_datas
+    _, scraper = _resolve_scraper(schedule_time)
+    return await scraper(schedule_time)
 
 
-async def get_today_recommend() -> dict:
-    """
-    获取今日推荐番剧
-    """
-    total_result = {}
-    for i in range(1, 6):
-        url = f"https://www.agedm.org/recommend/{i}"
-        response = requests.get(url)
-        if response.status_code == 200:
-            result = {}
-            soup = BeautifulSoup(response.text, "html.parser")
-            video_items = soup.find_all("div", {"class": "video_item"})
-            for video_item in video_items:
-                img_url = video_item.find("img").get("data-original")
-                anime_name = video_item.find("a").text.strip()
-                anime_url = video_item.find("a").get("href")
-                result.update({anime_name: {"image_url": img_url, "url": anime_url}})
-            total_result.update(result)
-        else:
-            raise ValueError(f"获取今日推荐番剧失败, 无法访问:{url}")
+def _safe_display_text(value: str) -> str:
+    if not isinstance(value, str):
+        value = str(value)
+    return value.encode("gbk", errors="replace").decode("gbk")
 
-    return total_result
+
+def _summarize_result(schedule_time: str, route_name: str, data: dict) -> tuple[str, dict]:
+    daily_data = data.get("daily_anime", {})
+    detail_data = data.get("anime_details", {})
+    daily_count = len(daily_data)
+    detail_count = len(detail_data)
+    anime_count = sum(len(v) for v in daily_data.values() if isinstance(v, dict))
+
+    sample_day = next(iter(daily_data), "-")
+    sample_anime = "-"
+    if sample_day != "-" and isinstance(daily_data.get(sample_day), dict) and daily_data[sample_day]:
+        sample_anime = next(iter(daily_data[sample_day]))
+    sample_detail = next(iter(detail_data), "-")
+
+    issue_messages = []
+    if schedule_time != "202007" and daily_count == 0:
+        issue_messages.append("daily=0")
+    if detail_count == 0:
+        issue_messages.append("details=0")
+    if detail_count > 0:
+        invalid_detail_count = sum(
+            1 for item in detail_data.values() if not item.get("anime_type") or item.get("anime_type") == "未知"
+        )
+        if invalid_detail_count > 0:
+            issue_messages.append(f"unknown_type={invalid_detail_count}")
+
+    result = {
+        "route": route_name,
+        "schedule_time": schedule_time,
+        "daily_count": daily_count,
+        "anime_count": anime_count,
+        "detail_count": detail_count,
+        "sample_day": sample_day,
+        "sample_anime": sample_anime,
+        "sample_detail": sample_detail,
+        "issues": issue_messages,
+    }
+    status = "WARN" if issue_messages else "OK"
+    return status, result
 
 
 if __name__ == '__main__':
-    import asyncio
+    success = []
+    warnings = []
+    failed = []
+    total_start_time = time.time()
 
-    # data = asyncio.run(download_new_anime_datas("202501"))
-    # data = asyncio.run(download_new_anime_datas("202110"))
-    # print(data)
-    # print(len(data2["anime_details"]))
-    # data = asyncio.run(get_today_recommend())
-    # print(data2)
+    for index, schedule_time in enumerate(TEST_SCHEDULE_TIMES, start=1):
+        start_time = time.time()
+        route_name, scraper = _resolve_scraper(schedule_time)
+        try:
+            data = asyncio.run(scraper(schedule_time))
+            elapsed = time.time() - start_time
+            status, result = _summarize_result(schedule_time, route_name, data)
+            result["elapsed"] = elapsed
+
+            if status == "WARN":
+                warnings.append(result)
+                print(
+                    f"[WARN] ({index}/{len(TEST_SCHEDULE_TIMES)}) {schedule_time} route={route_name} "
+                    f"daily={result['daily_count']} anime={result['anime_count']} details={result['detail_count']} "
+                    f"sample_day={_safe_display_text(result['sample_day'])} sample_anime={_safe_display_text(result['sample_anime'])} "
+                    f"sample_detail={_safe_display_text(result['sample_detail'])} issues={','.join(result['issues'])} elapsed={elapsed:.2f}s"
+                )
+            else:
+                success.append(result)
+                print(
+                    f"[OK]   ({index}/{len(TEST_SCHEDULE_TIMES)}) {schedule_time} route={route_name} "
+                    f"daily={result['daily_count']} anime={result['anime_count']} details={result['detail_count']} "
+                    f"sample_day={_safe_display_text(result['sample_day'])} sample_anime={_safe_display_text(result['sample_anime'])} "
+                    f"sample_detail={_safe_display_text(result['sample_detail'])} elapsed={elapsed:.2f}s"
+                )
+        except Exception as e:
+            elapsed = time.time() - start_time
+            failed.append((schedule_time, route_name, str(e), elapsed))
+            print(
+                f"[FAIL] ({index}/{len(TEST_SCHEDULE_TIMES)}) {schedule_time} route={route_name} "
+                f"error={e} elapsed={elapsed:.2f}s"
+            )
+
+    total_elapsed = time.time() - total_start_time
+    print("=" * 80)
+    print(
+        f"summary: success={len(success)} warn={len(warnings)} fail={len(failed)} total={len(TEST_SCHEDULE_TIMES)} elapsed={total_elapsed:.2f}s"
+    )
+
+    if warnings:
+        print("warnings:")
+        for item in warnings:
+            print(
+                f" - {item['schedule_time']} route={item['route']}: daily={item['daily_count']} anime={item['anime_count']} "
+                f"details={item['detail_count']} issues={','.join(item['issues'])}"
+            )
+
+    if failed:
+        print("failed schedules:")
+        for schedule_time, route_name, error, elapsed in failed:
+            print(f" - {schedule_time} route={route_name}: error={error} elapsed={elapsed:.2f}s")

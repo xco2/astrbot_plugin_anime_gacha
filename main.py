@@ -58,9 +58,11 @@ class AnimeGacha(Star):
         """
         try:
             recommend_data = await self.data_holder.get_today_recommend_animes()
+            if len(recommend_data) == 0:
+                raise ValueError("今日推荐番剧数据为空，可能是推荐页无法访问、页面结构变化，或缓存中保存了空数据")
         except Exception as e:
             logger.error(f"获取今日番剧数据失败: {e}")
-            yield event.plain_result("获取今日番剧数据失败")
+            yield event.plain_result(f"获取今日番剧数据失败: {e}")
             return
         TMPL = """
          <style>

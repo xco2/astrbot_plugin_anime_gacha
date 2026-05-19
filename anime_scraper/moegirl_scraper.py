@@ -77,6 +77,9 @@ async def get_md_from_url(url: str) -> str:
             html = await response.text(encoding="utf-8")
             soup = BeautifulSoup(html, "html.parser")
             main_content = soup.find("div", class_="mw-parser-output")
+            if main_content is None:
+                raise ValueError(f"获取萌娘百科正文失败，页面中未找到 mw-parser-output: {url}")
+
             # 删除不必要内容
             for navbox in main_content.find_all('table', class_="navbox"):
                 navbox.decompose()

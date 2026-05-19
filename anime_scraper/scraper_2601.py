@@ -221,20 +221,41 @@ async def get_today_recommend() -> dict:
     获取今日推荐番剧
     """
     total_result = {}
+    failed_reasons = []
     for i in range(1, 6):
-        url = f"https://www.agedm.org/recommend/{i}"
-        response = requests.get(url)
+        url = f"https://www.agedm.io/recommend/{i}"
+        try:
+            response = requests.get(url, timeout=10)
+        except Exception as e:
+            failed_reasons.append(f"{url} 请求异常: {e}")
+            continue
+
         if response.status_code == 200:
             result = {}
             soup = BeautifulSoup(response.text, "html.parser")
             video_items = soup.find_all("div", {"class": "video_item"})
+            if len(video_items) == 0:
+                failed_reasons.append(f"{url} 未解析到推荐条目，可能是页面结构变化或返回了非推荐页")
+                continue
             for video_item in video_items:
-                img_url = video_item.find("img").get("data-original")
-                anime_name = video_item.find("a").text.strip()
-                anime_url = video_item.find("a").get("href")
+                img_tag = video_item.find("img")
+                anime_tag = video_item.find("a")
+                if img_tag is None or anime_tag is None:
+                    failed_reasons.append(f"{url} 存在推荐条目缺少图片或链接")
+                    continue
+                img_url = img_tag.get("data-original") or img_tag.get("src")
+                anime_name = anime_tag.text.strip()
+                anime_url = anime_tag.get("href")
+                if not anime_name or not img_url or not anime_url:
+                    failed_reasons.append(f"{url} 存在推荐条目信息不完整")
+                    continue
                 result.update({anime_name: {"image_url": img_url, "url": anime_url}})
             total_result.update(result)
         else:
-            raise ValueError(f"获取今日推荐番剧失败, 无法访问:{url}")
+            failed_reasons.append(f"{url} HTTP {response.status_code}")
+
+    if len(total_result) == 0:
+        reason = "；".join(failed_reasons) if failed_reasons else "推荐页没有返回任何可用数据"
+        raise ValueError(f"获取今日推荐番剧失败: {reason}")
 
     return total_result
